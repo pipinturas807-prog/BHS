@@ -1089,6 +1089,36 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
+        <script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyALCBfhcIjR5FHvVVEPCyfHJOsysrTM6kw",
+  authDomain: "bhs807.firebaseapp.com",
+  projectId: "bhs807",
+  storageBucket: "bhs807.firebasestorage.app",
+  messagingSenderId: "703824622381",
+  appId: "1:703824622381:web:b6c965897aed3a59cad9a4"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+window.db = db;
+window.firebaseDoc = doc;
+window.firebaseSetDoc = setDoc;
+window.firebaseGetDoc = getDoc;
+window.firebaseOnSnapshot = onSnapshot;
+
     </script>
 </body>
 </html>
