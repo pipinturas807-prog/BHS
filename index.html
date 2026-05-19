@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BAUHAUS - Gestión de Tareas Remota</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-bauhaus {
+            font-family: 'Archivo Black', 'Arial Black', sans-serif;
+            letter-spacing: -0.02em;
+        }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+    </style>
+</head>
+<body class="bg-neutral-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- CONFIGURACIÓN DE FIREBASE DINÁMICA ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : {
+                apiKey: "",
+                authDomain: "",
+                projectId: "",
+                storageBucket: "",
+                messagingSenderId: "",
+                appId: ""
+            };
+
+        // Datos por defecto si el LocalStorage está vacío
+        const initialTasks = [
+            { id: "t1", title: "Reparar fuga en pasillo 4", description: "Hay una pequeña fuga en la sección de sanitarios cerca de la exhibición de griferías. Se necesita cinta de teflón.", createdAt: "2026-05-18", estimatedTime: "1h", section: "SANITARIOS", assignedTo: "Mantenimiento", status: "pending" },
+            { id: "t2", title: "Reposición de stock de barnices", description: "Colocar los nuevos barnices acrílicos de exterior recibidos ayer por la mañana.", createdAt: "2026-05-17", estimatedTime: "2h", section: "PINTURAS", assignedTo: "Vendedor", status: "in-progress" },
+            { id: "t3", title: "Organizar cajas de click & collect", description: "Clasificar por orden alfabético de apellido de cliente los pedidos de la estantería A.", createdAt: "2026-05-16", estimatedTime: "3h", section: "CAJAS / CLICK & COLLECT", assignedTo: "Responsable", status: "completed" }
+        ];
+
+        const initialUsers = [
+            { id: "u1", name: 'Admin Barcelona', role: 'admin', email: 'dirbarcelona@bauhaus.es', position: 'ADMINISTRADOR' },
+            { id: "u2", name: 'Operario Ejemplo', role: 'user', email: 'staff@bauhaus.es', position: 'Responsable de seccion' }
+        ];
+
+        // Inicializar Firebase de forma segura
+        let db = null;
+        let auth = null;
+        let isMockFallback = false;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey.trim() !== "") {
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                db = firebase.firestore();
+                auth = firebase.auth();
+            } catch (e) {
+                console.warn("Fallo al iniciar Firebase. Usando base de datos interna.", e);
+                isMockFallback = true;
+            }
+        } else {
+            isMockFallback = true;
+        }
+
+        // Rutas estrictas de Firestore para el sandbox (Regla 1)
+        const getTasksCollection = () => {
+            return db.collection('artifacts').doc(appId).collection('public').doc('data').collection('tasks');
+        };
+
+        const getUsersCollection = () => {
+            return db.collection('artifacts').doc(appId).collection('public').doc('data').collection('users');
+        };
+
+        // Iconos SVG
+        const Icons = {
+            Dashboard: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>,
+            Tasks: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>,
+            Users: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>,
+            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>,
+            Logout: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>,
+            Mail: () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>,
+            Menu: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>,
+            Close: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>,
+            Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
+            Upload: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+        };
+
+        const BauhausLogo = () => (
+            <div className="flex gap-0.5 animate-pulse">
+                {['B', 'A', 'U', 'H', 'A', 'U', 'S'].map((char, i) => (
+                    <div key={i} className="bg-[#e30613] text-white w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-black text-lg md:text-xl relative font-bauhaus">
+                        {char}
+                        {char === 'S' && <span className="absolute top-0.5 right-0.5 text-[5px]">®</span>}
+                    </div>
+                ))}
+            </div>
+        );
+
+        const App = () => {
+            const [currentUser, setCurrentUser] = useState(null);
+            
+            // Inicializar estados con lectura directa de localStorage si está disponible
+            const [tasks, setTasks] = useState(() => {
+                const saved = localStorage.getItem(`bauhaus_tasks_${appId}`);
+                return saved ? JSON.parse(saved) : initialTasks;
+            });
+            const [users, setUsers] = useState(() => {
+                const saved = localStorage.getItem(`bauhaus_users_${appId}`);
+                return saved ? JSON.parse(saved) : initialUsers;
+            });
+
+            const [view, setView] = useState('dashboard');
+            const [isCreatingUser, setIsCreatingUser] = useState(false);
+            const [confirmDelete, setConfirmDelete] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [firebaseUser, setFirebaseUser] = useState(null);
+            const [isMockMode, setIsMockMode] = useState(isMockFallback);
+            
+            const [isMobile, setIsMobile] = useState(false);
+            const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+            const [activeMobileTask, setActiveMobileTask] = useState(null);
+            const [selectedDashboardSection, setSelectedDashboardSection] = useState('TODAS');
+
+            // Estados para el inicio de sesión del Administrador
+            const [selectedAdminUser, setSelectedAdminUser] = useState(null);
+            const [usernameInput, setUsernameInput] = useState('');
+            const [passwordInput, setPasswordInput] = useState('');
+            const [loginError, setLoginError] = useState('');
+
+            // Estado de las notificaciones personalizadas de copia de seguridad (Evitando alertas del navegador)
+            const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+
+            const triggerNotification = (message, type = 'success') => {
+                setNotification({ show: true, message, type });
+                setTimeout(() => {
+                    setNotification(prev => ({ ...prev, show: false }));
+                }, 4000);
+            };
+
+            // Guardar en el backup de localStorage local de forma redundante cada vez que cambian las listas
+            useEffect(() => {
+                localStorage.setItem(`bauhaus_tasks_${appId}`, JSON.stringify(tasks));
+            }, [tasks]);
+
+            useEffect(() => {
+                localStorage.setItem(`bauhaus_users_${appId}`, JSON.stringify(users));
+            }, [users]);
+
+            // Detectar el tamaño de la pantalla
+            useEffect(() => {
+                const handleResize = () => {
+                    setIsMobile(window.innerWidth < 768);
+                };
+                handleResize();
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
+
+            // 1. Manejar la Autenticación de Firebase primero
+            useEffect(() => {
+                if (isMockMode) {
+                    setFirebaseUser({ uid: "mock-user-id", isAnonymous: true });
+                    setLoading(false);
+                    return;
+                }
+
+                const initAuth = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await auth.signInWithCustomToken(__initial_auth_token);
+                        } else {
+                            await auth.signInAnonymously();
+                        }
+                    } catch (e) {
+                        console.warn("Autenticación fallida o bloqueada por permisos. Activando modo local.", e);
+                        setIsMockMode(true);
+                        setFirebaseUser({ uid: "mock-user-id", isAnonymous: true });
+                        setLoading(false);
+                    }
+                };
+                initAuth();
+
+                const unsubscribe = auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        setFirebaseUser(user);
+                    }
+                });
+                return () => unsubscribe();
+            }, [isMockMode]);
+
+            // 2. Escuchar Tareas y Usuarios en tiempo real si Firebase está activo
+            useEffect(() => {
+                if (isMockMode || !firebaseUser || !db) {
+                    setLoading(false);
+                    return;
+                }
+
+                const tasksRef = getTasksCollection();
+                const usersRef = getUsersCollection();
+
+                const unsubscribeTasks = tasksRef
+                    .onSnapshot((snapshot) => {
+                        const tasksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        
+                        tasksData.sort((a, b) => {
+                            const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                            const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                            return dateB - dateA;
+                        });
+
+                        setTasks(tasksData);
+                        setLoading(false);
+                    }, (error) => {
+                        console.warn("Fallo en lectura de Firestore. Cambiando a base local de respaldo: ", error);
+                        setIsMockMode(true);
+                        setLoading(false);
+                    });
+
+                const unsubscribeUsers = usersRef
+                    .onSnapshot((snapshot) => {
+                        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        if (usersData.length > 0) {
+                            setUsers(usersData);
+                        } else {
+                            initialUsers.forEach(u => usersRef.add(u));
+                        }
+                    }, (error) => console.warn("Error de lectura de usuarios:", error));
+
+                return () => {
+                    unsubscribeTasks();
+                    unsubscribeUsers();
+                };
+            }, [firebaseUser, isMockMode]);
+
+            // Operación de Guardado de Tareas
+            const addTask = async (taskData) => {
+                const newTask = { 
+                    ...taskData, 
+                    status: 'pending'
+                };
+                if (!isMockMode && db) {
+                    try {
+                        await getTasksCollection().add(newTask);
+                        setView('tasks');
+                        triggerNotification("Tarea subida a la nube e integrada en el backup");
+                    } catch (e) {
+                        console.error("Error al guardar en la nube, usando copia local:", e);
+                        setTasks(prev => [{ id: Date.now().toString(), ...newTask }, ...prev]);
+                        setView('tasks');
+                        triggerNotification("Sincronizado de respaldo local realizado", "warning");
+                    }
+                } else {
+                    setTasks(prev => [{ id: Date.now().toString(), ...newTask }, ...prev]);
+                    setView('tasks');
+                    triggerNotification("Tarea guardada en el almacenamiento de respaldo local");
+                }
+            };
+
+            const updateTaskStatus = async (id, newStatus) => {
+                if (!isMockMode && db) {
+                    try {
+                        await getTasksCollection().doc(id).update({ status: newStatus });
+                        triggerNotification("Estado actualizado en la nube");
+                    } catch (e) {
+                        console.error("Error al actualizar estado, aplicando localmente:", e);
+                        setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+                        triggerNotification("Estado actualizado en el respaldo local", "warning");
+                    }
+                } else {
+                    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+                    triggerNotification("Estado guardado localmente");
+                }
+            };
+
+            const deleteTask = async (id) => {
+                if (!isMockMode && db) {
+                    try {
+                        await getTasksCollection().doc(id).delete();
+                        setConfirmDelete(null);
+                        triggerNotification("Tarea eliminada permanentemente de la nube");
+                    } catch (e) {
+                        console.error("Error al borrar de la nube, borrando de forma local:", e);
+                        setTasks(prev => prev.filter(t => t.id !== id));
+                        setConfirmDelete(null);
+                        triggerNotification("Tarea eliminada de la copia de seguridad local", "warning");
+                    }
+                } else {
+                    setTasks(prev => prev.filter(t => t.id !== id));
+                    setConfirmDelete(null);
+                    triggerNotification("Tarea eliminada localmente");
+                }
+            };
+
+            const addUser = async (userData) => {
+                if (!isMockMode && db) {
+                    try {
+                        await getUsersCollection().add(userData);
+                        setIsCreatingUser(false);
+                        triggerNotification("Nuevo usuario sincronizado con el servidor");
+                    } catch (e) {
+                        console.error("Error al añadir personal en la nube, guardando local:", e);
+                        setUsers(prev => [...prev, { id: Date.now().toString(), ...userData }]);
+                        setIsCreatingUser(false);
+                        triggerNotification("Usuario añadido al respaldo local", "warning");
+                    }
+                } else {
+                    setUsers(prev => [...prev, { id: Date.now().toString(), ...userData }]);
+                    setIsCreatingUser(false);
+                    triggerNotification("Usuario añadido localmente");
+                }
+            };
+
+            const deleteUser = async (id) => {
+                if (!isMockMode && db) {
+                    try {
+                        await getUsersCollection().doc(id).delete();
+                        triggerNotification("Perfil eliminado de la base de datos central");
+                    } catch (e) {
+                        console.error("Error al borrar personal de la nube, aplicando de forma local:", e);
+                        setUsers(prev => prev.filter(u => u.id !== id));
+                        triggerNotification("Perfil eliminado de la copia local", "warning");
+                    }
+                } else {
+                    setUsers(prev => prev.filter(u => u.id !== id));
+                    triggerNotification("Perfil eliminado localmente");
+                }
+            };
+
+            // FUNCIONALIDAD DE RESPALDO (EXPORTACIÓN / IMPORTACIÓN DIRECTA DE DATOS JSON)
+            const handleExportBackup = () => {
+                try {
+                    const backupData = {
+                        appId,
+                        backupDate: new Date().toISOString(),
+                        tasks,
+                        users
+                    };
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+                    const downloadAnchor = document.createElement('a');
+                    downloadAnchor.setAttribute("href", dataStr);
+                    downloadAnchor.setAttribute("download", `BAUHAUS_Backup_${appId}_${new Date().toISOString().slice(0,10)}.json`);
+                    document.body.appendChild(downloadAnchor);
+                    downloadAnchor.click();
+                    downloadAnchor.remove();
+                    triggerNotification("Copia de seguridad exportada con éxito");
+                } catch (err) {
+                    triggerNotification("Error al compilar la copia de seguridad", "error");
+                }
+            };
+
+            const handleImportBackup = (event) => {
+                const fileReader = new FileReader();
+                const file = event.target.files[0];
+                if (!file) return;
+
+                fileReader.onload = async (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (!importedData.tasks || !importedData.users) {
+                            triggerNotification("Archivo de respaldo inválido o dañado", "error");
+                            return;
+                        }
+
+                        // Restaurar en memoria y guardar en localStorage
+                        setTasks(importedData.tasks);
+                        setUsers(importedData.users);
+
+                        // Si estamos conectados con Firebase, ofrecer subirlo progresivamente o mantenerlo local
+                        if (!isMockMode && db) {
+                            triggerNotification("Restaurando datos en la nube de Firebase...");
+                            // Subida progresiva de tareas para no saturar las cuotas
+                            const tasksRef = getTasksCollection();
+                            const usersRef = getUsersCollection();
+
+                            // Borrar primero los actuales para sobreescribir de forma limpia
+                            const currentTasksSnapshot = await tasksRef.get();
+                            currentTasksSnapshot.forEach(doc => doc.ref.delete());
+
+                            for (const t of importedData.tasks) {
+                                const { id, ...cleanTask } = t; // Excluir ID anterior para generar nuevos documentos limpios
+                                await tasksRef.add(cleanTask);
+                            }
+                            triggerNotification("Nube de Firebase restaurada correctamente");
+                        } else {
+                            triggerNotification("Copia de seguridad local importada correctamente");
+                        }
+                    } catch (err) {
+                        triggerNotification("Error al procesar el archivo JSON", "error");
+                    }
+                };
+                fileReader.readAsText(file);
+            };
+
+            // Filtrar tareas para las estadísticas del dashboard
+            const dashboardTasks = selectedDashboardSection === 'TODAS'
+                ? tasks
+                : tasks.filter(t => t.section === selectedDashboardSection);
+
+            const stats = {
+                pending: dashboardTasks.filter(t => t.status === 'pending').length,
+                inProgress: dashboardTasks.filter(t => t.status === 'in-progress').length,
+                completed: dashboardTasks.filter(t => t.status === 'completed').length,
+                total: dashboardTasks.length
+            };
+
+            const reportBody = tasks.filter(t => t.status !== 'completed').map(t => `- ${t.title}`).join('%0D%0A');
+            const mailto = `mailto:dirbarcelona@bauhaus.es?subject=Reporte de Tareas&body=Tareas pendientes:%0D%0A${reportBody}`;
+
+            const handleMobileNavigation = (targetView) => {
+                setView(targetView);
+                setMobileMenuOpen(false);
+            };
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-neutral-100 font-bauhaus uppercase text-xs">
+                        Conectando con el servidor Bauhaus y comprobando copias de seguridad...
+                    </div>
+                );
+            }
+
+            if (!currentUser) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-neutral-100 p-4">
+                        <div className="max-w-md w-full bg-white border-[4px] md:border-[6px] border-black p-6 md:p-10 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] md:shadow-[20px_20px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="flex flex-col items-center mb-6 md:mb-10">
+                                <BauhausLogo />
+                                <div className="h-1 w-full bg-black my-4 md:my-6"></div>
+                                <h2 className="font-bauhaus text-lg md:text-xl uppercase">Gestión Remota</h2>
+                                <span className="mt-2 text-[8px] bg-emerald-500 text-black font-bold px-2 py-0.5 tracking-widest rounded uppercase">
+                                    Respaldo Local Redundante Activo
+                                </span>
+                            </div>
+
+                            {selectedAdminUser ? (
+                                <form onSubmit={e => {
+                                    e.preventDefault();
+                                    if (usernameInput === 'admin' && passwordInput === 'bcn807') {
+                                        setCurrentUser(selectedAdminUser);
+                                        setSelectedAdminUser(null);
+                                        setUsernameInput('');
+                                        setPasswordInput('');
+                                        setLoginError('');
+                                    } else {
+                                        setLoginError('Usuario o contraseña incorrectos');
+                                    }
+                                }} className="space-y-4">
+                                    <div className="text-center">
+                                        <p className="font-bauhaus text-xs text-[#e30613] uppercase mb-4">Acceso de Administrador</p>
+                                    </div>
+
+                                    {loginError && (
+                                        <div className="bg-red-100 border-2 border-[#e30613] text-[#e30613] p-2 text-center text-[10px] font-bold uppercase">
+                                            {loginError}
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Usuario</label>
+                                        <input 
+                                            name="username" 
+                                            type="text"
+                                            value={usernameInput}
+                                            onChange={e => setUsernameInput(e.target.value)}
+                                            required 
+                                            className="w-full p-3 border-2 border-black text-xs font-bold uppercase focus:outline-none bg-white" 
+                                            placeholder="Introduce usuario"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Contraseña</label>
+                                        <input 
+                                            name="password" 
+                                            type="password"
+                                            value={passwordInput}
+                                            onChange={e => setPasswordInput(e.target.value)}
+                                            required 
+                                            className="w-full p-3 border-2 border-black text-xs font-bold focus:outline-none bg-white" 
+                                            placeholder="••••••••"
+                                        />
+                                    </div>
+
+                                    <button type="submit" className="w-full bg-[#e30613] text-white p-4 font-bauhaus uppercase text-xs border-2 border-black hover:bg-black transition-colors mt-2">
+                                        Entrar
+                                    </button>
+
+                                    <button 
+                                        type="button" 
+                                        onClick={() => {
+                                            setSelectedAdminUser(null);
+                                            setUsernameInput('');
+                                            setPasswordInput('');
+                                            setLoginError('');
+                                        }} 
+                                        className="w-full bg-zinc-200 text-black p-2 font-bauhaus uppercase text-[9px] border-2 border-zinc-400 hover:bg-zinc-300 transition-colors"
+                                    >
+                                        Volver a la lista
+                                    </button>
+                                </form>
+                            ) : (
+                                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                                    {users.map(u => (
+                                        <button 
+                                            key={u.id} 
+                                            onClick={() => {
+                                                if (u.role === 'admin') {
+                                                    setSelectedAdminUser(u);
+                                                } else {
+                                                    setCurrentUser(u);
+                                                }
+                                            }} 
+                                            className="w-full p-3 md:p-4 border-4 border-black hover:bg-black hover:text-white flex justify-between items-center transition-all bg-white"
+                                        >
+                                            <div className="text-left">
+                                                <p className="font-bauhaus text-xs md:text-sm uppercase">{u.name}</p>
+                                                <p className="text-[8px] md:text-[9px] font-bold opacity-50 uppercase">{u.role === 'admin' ? 'ADMINISTRADOR' : u.position}</p>
+                                            </div>
+                                            <span className="text-xs md:text-sm">→</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex flex-col md:flex-row min-h-screen relative">
+                    
+                    {/* --- TOAST DE NOTIFICACIÓN DE RESPALDO --- */}
+                    {notification.show && (
+                        <div className={`fixed top-4 right-4 z-50 p-4 border-4 border-black font-bauhaus text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all ${
+                            notification.type === 'error' ? 'bg-[#e30613] text-white' : 
+                            notification.type === 'warning' ? 'bg-amber-400 text-black' : 
+                            'bg-emerald-500 text-white'
+                        }`}>
+                            {notification.message}
+                        </div>
+                    )}
+
+                    {/* --- CABECERA SUPERIOR MÓVIL --- */}
+                    {isMobile && (
+                        <header className="bg-black text-white p-4 flex items-center justify-between border-b-4 border-black sticky top-0 z-40">
+                            <BauhausLogo />
+                            <div className="flex items-center gap-4">
+                                <button 
+                                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
+                                    className="p-1 border-2 border-white hover:border-[#e30613] active:bg-[#e30613] transition-colors"
+                                >
+                                    {mobileMenuOpen ? <Icons.Close /> : <Icons.Menu />}
+                                </button>
+                            </div>
+                        </header>
+                    )}
+
+                    {/* --- MENÚ DESPLEGABLE MÓVIL --- */}
+                    {isMobile && mobileMenuOpen && (
+                        <div className="fixed inset-x-0 top-[65px] bottom-0 bg-black/95 text-white z-40 p-6 flex flex-col justify-between border-b-8 border-[#e30613]">
+                            <div className="space-y-3">
+                                <button onClick={() => handleMobileNavigation('dashboard')} className={`w-full text-left p-4 flex items-center gap-3 font-bauhaus text-[11px] uppercase border-l-4 ${view==='dashboard'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}>
+                                    <Icons.Dashboard /> Dashboard
+                                </button>
+                                <button onClick={() => handleMobileNavigation('tasks')} className={`w-full text-left p-4 flex items-center gap-3 font-bauhaus text-[11px] uppercase border-l-4 ${view==='tasks'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}>
+                                    <Icons.Tasks /> Backlog de tareas
+                                </button>
+                                <button onClick={() => handleMobileNavigation('create')} className={`w-full text-left p-4 flex items-center gap-3 font-bauhaus text-[11px] uppercase border-l-4 ${view==='create'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}>
+                                    <Icons.Plus /> Nueva Solicitud
+                                </button>
+                                {currentUser.role === 'admin' && (
+                                    <button onClick={() => handleMobileNavigation('users')} className={`w-full text-left p-4 flex items-center gap-3 font-bauhaus text-[11px] uppercase border-l-4 ${view==='users'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}>
+                                        <Icons.Users /> Personal
+                                    </button>
+                                )}
+                            </div>
+                            <div className="border-t border-zinc-800 pt-6">
+                                <p className="font-bauhaus text-[9px] uppercase text-[#e30613]">{currentUser.role === 'admin' ? 'ADMINISTRADOR' : currentUser.position}</p>
+                                <p className="font-bauhaus text-xs truncate mb-4">{currentUser.name}</p>
+                                {currentUser.role === 'admin' && (
+                                    <a href={mailto} className="flex items-center justify-center gap-2 text-[10px] text-black bg-white hover:text-white hover:bg-[#e30613] transition-colors p-3 font-bold uppercase mb-4 border border-zinc-700">
+                                        <Icons.Mail /> Enviar Reporte
+                                    </a>
+                                )}
+                                <button onClick={() => { setCurrentUser(null); setMobileMenuOpen(false); }} className="w-full p-3 bg-[#e30613] text-white font-bauhaus text-[10px] uppercase border-2 border-black hover:bg-white hover:text-black transition-all">
+                                    Salir del Perfil
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- SIDEBAR ESCRITORIO (PC) --- */}
+                    {!isMobile && (
+                        <nav className="w-64 bg-black text-white p-6 flex flex-col shrink-0">
+                            <div className="bg-white p-4 mb-10 flex justify-center border-b-4 border-black">
+                                <BauhausLogo />
+                            </div>
+                            <div className="flex-grow space-y-2">
+                                <button onClick={() => setView('dashboard')} className={`w-full text-left p-3 flex items-center gap-3 font-bauhaus text-[10px] uppercase border-l-4 ${view==='dashboard'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}>
+                                    <Icons.Dashboard /> Dashboard
+                                </button>
+                                <button onClick={() => setView('tasks')} className={`w-full text-left p-3 flex items-center gap-3 font-bauhaus text-[10px] uppercase border-l-4 ${view==='tasks'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}>
+                                    <Icons.Tasks /> Backlog de tareas
+                                </button>
+                                <button onClick={() => setView('create')} className={`w-full text-left p-3 flex items-center gap-3 font-bauhaus text-[10px] uppercase border-l-4 ${view==='create'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}>
+                                    <Icons.Plus /> Nueva Solicitud
+                                </button>
+                                {currentUser.role === 'admin' && (
+                                    <button onClick={() => setView('users')} className={`w-full text-left p-3 flex items-center gap-3 font-bauhaus text-[10px] uppercase border-l-4 ${view==='users'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}>
+                                        <Icons.Users /> Personal
+                                    </button>
+                                )}
+                            </div>
+                            <div className="mt-10 border-t border-zinc-800 pt-6">
+                                <p className="font-bauhaus text-[9px] uppercase text-[#e30613]">{currentUser.role === 'admin' ? 'ADMINISTRADOR' : currentUser.position}</p>
+                                <p className="font-bauhaus text-[10px] truncate mb-4">{currentUser.name}</p>
+                                {currentUser.role === 'admin' && (
+                                    <a href={mailto} className="flex items-center gap-2 text-[8px] text-zinc-500 hover:text-white mb-6 uppercase border border-zinc-700 p-2">
+                                        <Icons.Mail /> Enviar Reporte
+                                    </a>
+                                )}
+                                <button onClick={() => setCurrentUser(null)} className="w-full p-2 bg-white text-black font-bauhaus text-[9px] uppercase border-2 border-black hover:bg-[#e30613] hover:text-white transition-colors">
+                                    Salir
+                                </button>
+                            </div>
+                        </nav>
+                    )}
+
+                    {/* --- CONTENIDO PRINCIPAL --- */}
+                    <main className="flex-grow p-4 md:p-12">
+                        <h1 className="font-bauhaus text-3xl md:text-5xl uppercase mb-6 md:mb-12 border-b-4 md:border-b-8 border-black pb-2 md:pb-4">
+                            {view === 'dashboard' ? 'Dashboard' : view === 'tasks' ? 'Backlog' : view === 'users' ? 'Personal' : 'Nueva Orden'}
+                        </h1>
+
+                        {view === 'dashboard' && (
+                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                                
+                                {/* --- SECCIÓN DE ESTADÍSTICAS --- */}
+                                <div className="xl:col-span-2 bg-white border-4 border-black p-4 md:p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] md:shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 md:mb-8 pb-4 border-b-2 border-zinc-100">
+                                        <h3 className="font-bauhaus text-lg md:text-xl uppercase">Estado de Tareas</h3>
+                                        
+                                        <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+                                            <span className="font-bauhaus text-[9px] uppercase text-zinc-500">Sección:</span>
+                                            <select 
+                                                value={selectedDashboardSection} 
+                                                onChange={(e) => setSelectedDashboardSection(e.target.value)}
+                                                className="p-2 border-2 border-black uppercase text-[10px] font-bold bg-white focus:outline-none flex-grow sm:flex-grow-0"
+                                            >
+                                                <option value="TODAS">TODAS</option>
+                                                <option value="PINTURAS">PINTURAS</option>
+                                                <option value="MADERAS">MADERAS</option>
+                                                <option value="FERRETERÍA">FERRETERÍA</option>
+                                                <option value="MAQUINARIA">MAQUINARIA</option>
+                                                <option value="ILUMINACIÓN">ILUMINACIÓN</option>
+                                                <option value="SANITARIOS">SANITARIOS</option>
+                                                <option value="JARDÍN">JARDÍN</option>
+                                                <option value="PROYECTOS">PROYECTOS</option>
+                                                <option value="ORDENACIÓN">ORDENACIÓN</option>
+                                                <option value="MANTENIMIENTO">MANTENIMIENTO</option>
+                                                <option value="MERCANCÍAS">MERCANCÍAS</option>
+                                                <option value="PEDIDO CLIENTE">PEDIDO CLIENTE</option>
+                                                <option value="POSTVENTA">POSTVENTA</option>
+                                                <option value="CAJAS / CLICK & COLLECT">CAJAS / CLICK & COLLECT</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-6 md:space-y-8">
+                                        {[
+                                            { label: 'Pendientes', count: stats.pending, color: 'bg-black' },
+                                            { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#e30613]' },
+                                            { label: 'Finalizadas', count: stats.completed, color: 'bg-emerald-500' }
+                                        ].map(item => (
+                                            <div key={item.label} className="space-y-2">
+                                                <div className="flex justify-between font-bauhaus text-[10px] uppercase">
+                                                    <span>{item.label}</span>
+                                                    <span className="text-xl md:text-2xl">{item.count}</span>
+                                                </div>
+                                                <div className="h-6 md:h-8 bg-zinc-100 border-2 border-black relative">
+                                                    <div className={`h-full ${item.color} transition-all`} style={{width: `${stats.total ? (item.count/stats.total)*100 : 0}%`}}></div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    
+                                    <div className="mt-6 md:mt-8 pt-4 border-t-2 border-zinc-100 flex justify-between items-center">
+                                        <span className="font-bauhaus text-[9px] md:text-[10px] uppercase text-zinc-400">Total Tareas en esta vista</span>
+                                        <span className="font-bauhaus text-base md:text-lg">{stats.total}</span>
+                                    </div>
+                                </div>
+
+                                {/* --- PANEL DE COPIA DE SEGURIDAD / RESPALDO (ESTILO BAUHAUS) --- */}
+                                <div className="bg-white border-4 border-black p-4 md:p-8 shadow-[8px_8px_0px_0px_rgba(227,6,19,1)] flex flex-col justify-between">
+                                    <div>
+                                        <div className="border-b-2 border-black pb-3 mb-4">
+                                            <span className="bg-[#e30613] text-white font-bauhaus text-[8px] uppercase px-2 py-0.5">Módulo de Seguridad</span>
+                                            <h3 className="font-bauhaus text-base uppercase mt-2">Respaldos de Datos</h3>
+                                        </div>
+                                        <p className="text-[10px] text-zinc-600 font-bold uppercase mb-4 leading-relaxed">
+                                            Protege el backlog local y de la nube. Puedes exportar la base de datos completa como archivo JSON o restaurar una copia previa.
+                                        </p>
+
+                                        <div className="space-y-4">
+                                            {/* Descargar Respaldo */}
+                                            <button 
+                                                onClick={handleExportBackup}
+                                                className="w-full bg-black hover:bg-[#e30613] text-white p-3 font-bauhaus text-[9px] uppercase border-2 border-black flex items-center justify-center gap-2 transition-all"
+                                            >
+                                                <Icons.Download /> Exportar Copia de Seguridad
+                                            </button>
+
+                                            {/* Importar Respaldo */}
+                                            <div className="border-2 border-dashed border-zinc-300 hover:border-black p-4 text-center relative bg-neutral-50 transition-colors">
+                                                <input 
+                                                    type="file" 
+                                                    accept=".json" 
+                                                    onChange={handleImportBackup}
+                                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                                />
+                                                <div className="flex flex-col items-center justify-center gap-1">
+                                                    <Icons.Upload />
+                                                    <span className="font-bauhaus text-[8px] uppercase">Importar Backup JSON</span>
+                                                    <span className="text-[7px] text-zinc-400 uppercase font-bold">Arrastra o haz clic aquí</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-6 pt-4 border-t border-zinc-200">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[8px] uppercase font-bauhaus text-zinc-400">Modo de almacenamiento</span>
+                                            <span className={`text-[8px] font-bauhaus px-2 py-0.5 uppercase ${isMockMode ? 'bg-amber-400 text-black' : 'bg-emerald-500 text-white'}`}>
+                                                {isMockMode ? "Offline (Redundancia local)" : "Sincronizado con Firebase"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        )}
+
+                        {view === 'tasks' && (
+                            <div className="overflow-visible">
+                                {isMobile ? (
+                                    /* --- VISTA DE TARJETAS MÓVILES --- */
+                                    <div className="space-y-4">
+                                        {tasks.length === 0 ? (
+                                            <div className="bg-white border-2 border-dashed border-black p-8 text-center uppercase font-bauhaus text-xs text-zinc-400">
+                                                No hay tareas registradas
+                                            </div>
+                                        ) : (
+                                            tasks.map(t => (
+                                                <div key={t.id} className="bg-white border-4 border-black p-4 shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] relative flex flex-col justify-between gap-4">
+                                                    <div>
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <h4 className="font-bauhaus text-sm text-neutral-900 uppercase break-words leading-tight">{t.title}</h4>
+                                                            <span className={`shrink-0 text-[8px] font-bauhaus px-2 py-0.5 uppercase ${t.status==='completed'?'bg-emerald-100 text-emerald-600':'bg-amber-100 text-amber-600'}`}>
+                                                                {t.status}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-2 space-y-1 text-[9px] font-bold text-zinc-500">
+                                                            <p className="uppercase"><span className="text-black font-bauhaus">SECC:</span> {t.section || 'N/D'}</p>
+                                                            <p className="uppercase"><span className="text-black font-bauhaus">ASIG:</span> {t.assignedTo || 'N/D'}</p>
+                                                            <p className="text-[8px] text-zinc-400 font-medium">{t.createdAt}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2 w-full pt-2 border-t border-zinc-100">
+                                                        <button 
+                                                            onClick={() => setActiveMobileTask(t)}
+                                                            className="flex-grow bg-black text-white p-2.5 font-bauhaus text-[9px] uppercase border-2 border-black active:bg-zinc-800"
+                                                        >
+                                                            Ver detalles
+                                                        </button>
+                                                        {t.status !== 'completed' && (
+                                                            <button 
+                                                                onClick={() => updateTaskStatus(t.id, 'completed')} 
+                                                                className="bg-emerald-500 text-white p-2.5 px-4 font-bauhaus text-[9px] uppercase border-2 border-black active:bg-emerald-600"
+                                                            >
+                                                                OK
+                                                            </button>
+                                                        )}
+                                                        {currentUser.role === 'admin' && (
+                                                            <button 
+                                                                onClick={() => setConfirmDelete(t.id)} 
+                                                                className="border-2 border-black text-[#e30613] p-2.5 active:bg-red-50 flex items-center justify-center"
+                                                            >
+                                                                <Icons.Trash />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                ) : (
+                                    /* --- VISTA DE TABLA (PC/ESCRITORIO) --- */
+                                    <div className="bg-white border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-black text-white font-bauhaus text-[10px] uppercase">
+                                                <tr>
+                                                    <th className="p-4">Tarea</th>
+                                                    <th className="p-4">Sección</th>
+                                                    <th className="p-4">Asignado</th>
+                                                    <th className="p-4">Estado</th>
+                                                    <th className="p-4 text-right">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y-2 divide-zinc-100">
+                                                {tasks.map(t => (
+                                                    <tr key={t.id} className="text-[10px] font-bold uppercase hover:bg-neutral-50 transition-colors relative group">
+                                                        <td className="p-4 cursor-pointer relative">
+                                                            <div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="font-bauhaus text-neutral-900">{t.title}</p>
+                                                                    <span className="text-[7px] bg-[#e30613] text-white px-1 py-0.2 font-bauhaus tracking-wider rounded-sm select-none">
+                                                                        VER INFO
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-zinc-400 text-[8px] mt-1">{t.createdAt}</p>
+                                                            </div>
+
+                                                            {/* Tarjeta flotante en Hover para PC */}
+                                                            <div className="absolute left-6 top-12 hidden group-hover:flex flex-col bg-white text-black p-5 border-4 border-black shadow-[12px_12px_0px_0px_rgba(227,6,19,1)] z-50 w-80 normal-case font-bold divide-y-2 divide-black pointer-events-none">
+                                                                <div className="pb-3 text-left">
+                                                                    <span className="text-[8px] bg-[#e30613] text-white px-2 py-0.5 font-bauhaus uppercase">Bauhaus Task Manager</span>
+                                                                    <h4 className="font-bauhaus text-sm mt-2 text-[#e30613] uppercase break-words">{t.title}</h4>
+                                                                </div>
+                                                                <div className="py-3 space-y-2 text-[10px] text-zinc-700 font-medium">
+                                                                    <p className="font-bold text-black uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">SECCIÓN:</span> {t.section || 'SIN SECCIÓN'}</p>
+                                                                    <p className="font-bold text-black uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">ASIGNADO A:</span> {t.assignedTo || 'SIN ASIGNAR'}</p>
+                                                                    <p className="font-bold text-black uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">TIEMPO ESTIMADO:</span> {t.estimatedTime || 'N/D'}</p>
+                                                                    <p className="font-bold text-black uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">FECHA:</span> {t.createdAt}</p>
+                                                                    <p className="font-bold text-black uppercase flex items-center gap-1">
+                                                                        <span className="text-[#e30613] font-bauhaus text-[9px] mr-1">ESTADO:</span>
+                                                                        <span className={`px-2 py-0.5 text-[8px] font-bauhaus ${t.status === 'completed' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                                            {t.status}
+                                                                        </span>
+                                                                    </p>
+                                                                </div>
+                                                                {t.description && (
+                                                                    <div className="pt-3 text-left">
+                                                                        <span className="text-[#e30613] font-bauhaus text-[9px] uppercase block mb-1">Descripción de la Tarea:</span>
+                                                                        <p className="text-zinc-600 font-medium text-[10px] normal-case whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto pr-1">
+                                                                            {t.description}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-4 text-zinc-600 font-bauhaus">{t.section || 'SIN SECCIÓN'}</td>
+                                                        <td className="p-4 text-[#e30613]">{t.assignedTo}</td>
+                                                        <td className="p-4">
+                                                            <span className={`px-2 py-1 ${t.status==='completed'?'bg-emerald-100 text-emerald-600':'bg-amber-100 text-amber-600'}`}>{t.status}</span>
+                                                        </td>
+                                                        <td className="p-4 text-right flex justify-end gap-2">
+                                                            {t.status !== 'completed' && (
+                                                                <button onClick={() => updateTaskStatus(t.id, 'completed')} className="bg-emerald-500 text-white p-1 border-2 border-black px-3">OK</button>
+                                                            )}
+                                                            {currentUser.role === 'admin' && (
+                                                                <button onClick={() => setConfirmDelete(t.id)} className="p-1 border-2 border-black text-zinc-300 hover:text-[#e30613] hover:border-[#e30613]"><Icons.Trash /></button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {view === 'create' && (
+                            <div className="max-w-md bg-white border-4 border-black p-4 md:p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] md:shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]">
+                                <form className="space-y-4" onSubmit={e => {
+                                    e.preventDefault();
+                                    const fd = new FormData(e.target);
+                                    addTask({
+                                        title: fd.get('title'),
+                                        description: fd.get('description'),
+                                        createdAt: fd.get('date'),
+                                        estimatedTime: fd.get('time'),
+                                        section: fd.get('section'),
+                                        assignedTo: fd.get('to')
+                                    });
+                                    e.target.reset();
+                                }}>
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Título</label>
+                                        <input name="title" required className="w-full p-3 border-2 border-black uppercase text-xs font-bold focus:outline-none bg-white" />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Descripción / Tipo de Tarea</label>
+                                        <textarea 
+                                            name="description" 
+                                            placeholder="Detalla aquí la tarea o el tipo de trabajo que se debe realizar..." 
+                                            rows="3"
+                                            className="w-full p-3 border-2 border-black text-xs font-bold bg-white focus:outline-none uppercase"
+                                        ></textarea>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="font-bauhaus text-[9px] uppercase block mb-1">Fecha</label>
+                                            <input type="date" name="date" required className="w-full p-3 border-2 border-black text-xs focus:outline-none bg-white" />
+                                        </div>
+                                        <div>
+                                            <label className="font-bauhaus text-[9px] uppercase block mb-1">Tiempo</label>
+                                            <input name="time" placeholder="2h" required className="w-full p-3 border-2 border-black text-xs focus:outline-none bg-white" />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="font-bauhaus text-[9px] uppercase block mb-1">Sección</label>
+                                            <select name="section" className="w-full p-3 border-2 border-black uppercase text-xs font-bold bg-white focus:outline-none">
+                                                <option value="PINTURAS">PINTURAS</option>
+                                                <option value="MADERAS">MADERAS</option>
+                                                <option value="FERRETERÍA">FERRETERÍA</option>
+                                                <option value="MAQUINARIA">MAQUINARIA</option>
+                                                <option value="ILUMINACIÓN">ILUMINACIÓN</option>
+                                                <option value="SANITARIOS">SANITARIOS</option>
+                                                <option value="JARDÍN">JARDÍN</option>
+                                                <option value="PROYECTOS">PROYECTOS</option>
+                                                <option value="ORDENACIÓN">ORDENACIÓN</option>
+                                                <option value="MANTENIMIENTO">MANTENIMIENTO</option>
+                                                <option value="MERCANCÍAS">MERCANCÍAS</option>
+                                                <option value="PEDIDO CLIENTE">PEDIDO CLIENTE</option>
+                                                <option value="POSTVENTA">POSTVENTA</option>
+                                                <option value="CAJAS / CLICK & COLLECT">CAJAS / CLICK & COLLECT</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="font-bauhaus text-[9px] uppercase block mb-1">Asignar a</label>
+                                            <select name="to" className="w-full p-3 border-2 border-black uppercase text-xs font-bold bg-white focus:outline-none">
+                                                <option value="Responsable">RESPONSABLE</option>
+                                                <option value="2º Responsable">2º RESPONSABLE</option>
+                                                <option value="Vendedor">VENDEDOR</option>
+                                                <option value="Mantenimiento">MANTENIMIENTO</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-[#e30613] text-white p-4 font-bauhaus uppercase text-xs border-2 border-black hover:bg-black transition-colors mt-4">Guardar Orden</button>
+                                </form>
+                            </div>
+                        )}
+
+                        {view === 'users' && currentUser.role === 'admin' && (
+                            <div className="space-y-6">
+                                <button onClick={() => setIsCreatingUser(true)} className="bg-black text-white p-4 px-8 font-bauhaus uppercase text-xs border-4 border-black hover:bg-[#e30613]">Nuevo Usuario</button>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {users.map(u => (
+                                        <div key={u.id} className="bg-white border-4 border-black p-4 relative shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
+                                            <p className="font-bauhaus text-xs uppercase">{u.name}</p>
+                                            <p className="text-[#e30613] text-[9px] font-bold uppercase">{u.position}</p>
+                                            {u.id !== currentUser.id && (
+                                                <button onClick={() => deleteUser(u.id)} className="absolute top-4 right-4 text-zinc-300 hover:text-[#e30613]"><Icons.Trash /></button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* --- MODAL DETALLES DE TAREA MÓVIL --- */}
+                    {activeMobileTask && (
+                        <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white border-4 border-black p-6 w-full max-w-sm flex flex-col divide-y-2 divide-black max-h-[90vh] overflow-y-auto">
+                                <div className="pb-3 text-left">
+                                    <span className="text-[8px] bg-[#e30613] text-white px-2 py-0.5 font-bauhaus uppercase">Detalles en Móvil</span>
+                                    <h4 className="font-bauhaus text-base mt-2 text-[#e30613] uppercase break-words">{activeMobileTask.title}</h4>
+                                </div>
+                                <div className="py-3 space-y-2.5 text-[10px] text-zinc-700 font-bold">
+                                    <p className="uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">SECCIÓN:</span> {activeMobileTask.section || 'SIN SECCIÓN'}</p>
+                                    <p className="uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">ASIGNADO A:</span> {activeMobileTask.assignedTo || 'SIN ASIGNAR'}</p>
+                                    <p className="uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">TIEMPO ESTIMADO:</span> {activeMobileTask.estimatedTime || 'N/D'}</p>
+                                    <p className="uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">FECHA:</span> {activeMobileTask.createdAt}</p>
+                                    <p className="uppercase flex items-center gap-1">
+                                        <span className="text-[#e30613] font-bauhaus text-[9px] mr-1">ESTADO:</span>
+                                        <span className={`px-2 py-0.5 text-[8px] font-bauhaus ${activeMobileTask.status === 'completed' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                                            {activeMobileTask.status}
+                                        </span>
+                                    </p>
+                                </div>
+                                {activeMobileTask.description && (
+                                    <div className="py-3 text-left">
+                                        <span className="text-[#e30613] font-bauhaus text-[9px] uppercase block mb-1">Descripción:</span>
+                                        <p className="text-zinc-600 font-medium text-[10px] normal-case whitespace-pre-wrap leading-relaxed">
+                                            {activeMobileTask.description}
+                                        </p>
+                                    </div>
+                                )}
+                                <div className="pt-3">
+                                    <button 
+                                        onClick={() => setActiveMobileTask(null)} 
+                                        className="w-full bg-black text-white p-3 font-bauhaus text-[9px] uppercase border-2 border-black hover:bg-[#e30613] active:bg-[#e30613]"
+                                    >
+                                        Volver al Backlog
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modales generales */}
+                    {confirmDelete && (
+                        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white border-8 border-[#e30613] p-8 max-w-xs w-full text-center">
+                                <h4 className="font-bauhaus text-lg uppercase mb-6">¿Borrar?</h4>
+                                <button onClick={() => deleteTask(confirmDelete)} className="w-full bg-[#e30613] text-white p-4 font-bauhaus uppercase text-xs mb-2">Eliminar</button>
+                                <button onClick={() => setConfirmDelete(null)} className="w-full text-zinc-400 font-bauhaus uppercase text-[9px] py-2">Cancelar</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {isCreatingUser && (
+                        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white border-4 border-black p-6 max-w-sm w-full">
+                                <h4 className="font-bauhaus text-lg uppercase mb-6">Nuevo Perfil</h4>
+                                <form className="space-y-4" onSubmit={e => {
+                                    e.preventDefault();
+                                    const fd = new FormData(e.target);
+                                    addUser({ 
+                                        name: fd.get('n'), 
+                                        position: fd.get('p'), 
+                                        role: fd.get('r'), 
+                                        email: 'staff@bauhaus.es' 
+                                    });
+                                }}>
+                                    <input name="n" placeholder="NOMBRE" required className="w-full p-3 border-2 border-black font-bold text-xs focus:outline-none bg-white" />
+                                    <select name="p" className="w-full p-3 border-2 border-black text-xs uppercase font-bold bg-white focus:outline-none">
+                                        <option>Adjunto de comercio</option>
+                                        <option>Adjunto de gestion</option>
+                                        <option>Responsable de seccion</option>
+                                        <option>2º responsable</option>
+                                        <option>ADMINISTRADOR</option>
+                                    </select>
+                                    <select name="r" className="w-full p-3 border-2 border-black text-xs uppercase font-bold bg-white focus:outline-none">
+                                        <option value="user">OPERARIO</option>
+                                        <option value="admin">ADMINISTRADOR</option>
+                                    </select>
+                                    <button type="submit" className="w-full bg-black text-white p-4 font-bauhaus uppercase text-xs border-2 border-black">Crear</button>
+                                    <button type="button" onClick={() => setIsCreatingUser(false)} className="w-full text-zinc-400 font-bauhaus uppercase text-[9px] py-2">Cerrar</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
