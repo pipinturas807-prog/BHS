@@ -120,7 +120,33 @@
                 ))}
             </div>
         );
+async function guardarDatosFirebase(tasks, users) {
 
+    await firebaseSetDoc(
+        firebaseDoc(db, "bhs", "datos"),
+        {
+            tasks,
+            users
+        }
+    );
+
+    console.log("Datos guardados en Firebase");
+
+}
+
+async function cargarDatosFirebase() {
+
+    const snap = await firebaseGetDoc(
+        firebaseDoc(db, "bhs", "datos")
+    );
+
+    if (snap.exists()) {
+        return snap.data();
+    }
+
+    return null;
+
+}
         const App = () => {
             const [currentUser, setCurrentUser] = useState(() => {
                 const savedUser = localStorage.getItem(`bauhaus_active_user_${appId}`);
@@ -128,19 +154,38 @@
             });
             
             // Inicializar estados con lectura directa de localStorage
-            const [tasks, setTasks] = useState(() => {
-                const saved = localStorage.getItem(`bauhaus_tasks_${appId}`);
-                return saved ? JSON.parse(saved) : initialTasks;
-            });
-            const [users, setUsers] = useState(() => {
-                const saved = localStorage.getItem(`bauhaus_users_${appId}`);
-                return saved ? JSON.parse(saved) : initialUsers;
-            });
+           const [tasks, setTasks] = useState(initialTasks);
+           const [users, setUsers] = useState(initialUsers);
 
             const [view, setView] = useState('dashboard');
             const [isCreatingUser, setIsCreatingUser] = useState(false);
             const [confirmDelete, setConfirmDelete] = useState(null);
             const [loading, setLoading] = useState(true);
+            useEffect(() => {
+
+    async function cargarDatos() {
+
+        const datos = await cargarDatosFirebase();
+
+        if (datos) {
+
+            if (datos.tasks) {
+                setTasks(datos.tasks);
+            }
+
+            if (datos.users) {
+                setUsers(datos.users);
+            }
+
+        }
+
+        setLoading(false);
+
+    }
+
+    cargarDatos();
+
+}, []);
             const [firebaseUser, setFirebaseUser] = useState(null);
             const [isMockMode, setIsMockMode] = useState(isMockFallback);
             
@@ -175,13 +220,51 @@
             }, [currentUser]);
 
             // Persistir cambios localmente de forma inmediata como respaldo local robusto
-            useEffect(() => {
-                localStorage.setItem(`bauhaus_tasks_${appId}`, JSON.stringify(tasks));
-            }, [tasks]);
+           useEffect(() => {
+    localStorage.setItem(`bauhaus_users_${appId}`, JSON.stringify(users));
+}, [users]);
 
             useEffect(() => {
                 localStorage.setItem(`bauhaus_users_${appId}`, JSON.stringify(users));
             }, [users]);
+            useEffect(() => {
+
+    if (!loading) {
+
+        guardarDatosFirebase(tasks, users);
+
+    }
+
+}, [tasks, users]);
+            useEffect(() => {
+
+    const unsubscribe = firebaseOnSnapshot(
+
+        firebaseDoc(db, "bhs", "datos"),
+
+        (snap) => {
+
+            if (snap.exists()) {
+
+                const datos = snap.data();
+
+                if (datos.tasks) {
+                    setTasks(datos.tasks);
+                }
+
+                if (datos.users) {
+                    setUsers(datos.users);
+                }
+
+            }
+
+        }
+
+    );
+
+    return () => unsubscribe();
+
+}, []);
 
             // Adaptabilidad y control de tamaño móvil
             useEffect(() => {
