@@ -1,0 +1,2120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BAUHAUS - Gestión de Tareas Remota</title>
+    <!-- Tailwind CSS para el diseño visual de estilo Bauhaus -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de React 18 en modo producción (Sin Babel) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Fuentes tipográficas de estilo Bauhaus -->
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+        }
+        .font-bauhaus {
+            font-family: 'Archivo Black', 'Arial Black', sans-serif;
+            letter-spacing: -0.02em;
+        }
+        ::-webkit-scrollbar { 
+            width: 0px; 
+            background: transparent; 
+        }
+    </style>
+
+    <!-- Script de Inicialización del SDK de Firebase v11 en Ámbito Global -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, addDoc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        let firebaseConfig;
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            firebaseConfig = JSON.parse(__firebase_config);
+        } else if (window.__firebase_config) {
+            firebaseConfig = JSON.parse(window.__firebase_config);
+        } else {
+            firebaseConfig = {
+                apiKey: "AIzaSyALCBfhcIjR5FHvVVEPCyfHJOsysrTM6kw", 
+                authDomain: "bhs807.firebaseapp.com",
+                projectId: "bhs807",
+                storageBucket: "bhs807.firebasestorage.app",
+                messagingSenderId: "703824622381",
+                appId: "1:703824622381:web:b6c965897aed3a59cad9a4"
+            };
+        }
+
+        let db = null;
+        let auth = null;
+        let isMockFallback = false;
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.warn("Fallo al conectar con Firebase en la nube. Usando base de datos local redundante.", e);
+            isMockFallback = true;
+        }
+
+        window.F_SDK = {
+            db, auth, isMockFallback, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            doc, collection, addDoc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot
+        };
+
+        if (window.mountReactApp) {
+            window.mountReactApp();
+        }
+    </script>
+</head>
+<body class="bg-neutral-100">
+    <div id="root"></div>
+
+    <!-- Script de React usando HTM como alternativa nativa a Babel -->
+    <script type="module">
+        import htm from "https://unpkg.com/htm?module";
+        const html = htm.bind(React.createElement);
+
+        const { useState, useEffect, useRef } = React;
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'bauhaus-task-manager-v1';
+
+        // Definición de secciones y colores de tienda, incluyendo DIRECCIÓN y RRHH
+        const sectionColors = {
+            "DIRECCIÓN": { bg: "bg-red-700", text: "text-white", border: "border-red-900", hex: "#b91c1c", icon: "🏢" },
+            "RRHH": { bg: "bg-purple-600", text: "text-white", border: "border-purple-700", hex: "#9333ea", icon: "👥" },
+            "PINTURAS": { bg: "bg-blue-600", text: "text-white", border: "border-blue-700", hex: "#2563eb", icon: "🔵" },
+            "MADERAS": { bg: "bg-amber-900", text: "text-white", border: "border-amber-950", hex: "#78350f", icon: "🟤" },
+            "FERRETERÍA": { bg: "bg-orange-600", text: "text-white", border: "border-orange-700", hex: "#ea580c", icon: "🛠️" },
+            "MAQUINARIA": { bg: "bg-neutral-900", text: "text-white", border: "border-black", hex: "#171717", icon: "⚫" },
+            "ILUMINACIÓN": { bg: "bg-yellow-400", text: "text-black", border: "border-yellow-500", hex: "#facc15", icon: "🟡" },
+            "SANITARIOS": { bg: "bg-cyan-400", text: "text-black", border: "border-cyan-500", hex: "#22d3ee", icon: "💠" },
+            "JARDÍN": { bg: "bg-emerald-600", text: "text-white", border: "border-emerald-700", hex: "#059669", icon: "🟢" },
+            "PROYECTOS": { bg: "bg-violet-600", text: "text-white", border: "border-violet-700", hex: "#7c3aed", icon: "🟣" },
+            "ORDENACIÓN": { bg: "bg-zinc-500", text: "text-white", border: "border-zinc-600", hex: "#6b7280", icon: "🟠" },
+            "MANTENIMIENTO": { bg: "bg-[#e30613]", text: "text-white", border: "border-red-800", hex: "#e30613", icon: "🔴" },
+            "MERCANCÍAS": { bg: "bg-lime-500", text: "text-black", border: "border-lime-600", hex: "#84cc16", icon: "🟩" },
+            "PEDIDO CLIENTE": { bg: "bg-teal-600", text: "text-white", border: "border-teal-700", hex: "#0d9488", icon: "🌐" },
+            "POSTVENTA": { bg: "bg-rose-500", text: "text-white", border: "border-rose-600", hex: "#f43f5e", icon: "🔄" },
+            "CAJAS / CLICK & COLLECT": { bg: "bg-sky-400", text: "text-black", border: "border-sky-500", hex: "#38bdf8", icon: "📦" }
+        };
+
+        const priorityStyles = {
+            "MUY ALTA": { bg: "bg-red-600 text-white", border: "border-red-700", icon: "🚨", label: "Muy Alta" },
+            "ALTA": { bg: "bg-orange-500 text-white", border: "border-orange-600", icon: "⚠️", label: "Alta" },
+            "MEDIA": { bg: "bg-yellow-400 text-black", border: "border-yellow-500", icon: "⚡", label: "Media" },
+            "BAJA": { bg: "bg-blue-500 text-white", border: "border-blue-600", icon: "🔹", label: "Baja" },
+            "MUY BAJA": { bg: "bg-zinc-400 text-white", border: "border-zinc-500", icon: "⏳", label: "Muy Baja" }
+        };
+
+        const getPriorityStyle = (priority) => {
+            const normalized = String(priority || 'MEDIA').toUpperCase().trim();
+            if (priorityStyles[normalized]) return priorityStyles[normalized];
+            return priorityStyles["MEDIA"];
+        };
+
+        const getSectionStyle = (section) => {
+            const normalized = String(section || '').toUpperCase().trim();
+            if (sectionColors[normalized]) return sectionColors[normalized];
+            return { bg: "bg-neutral-500", text: "text-white", border: "border-neutral-600", hex: "#737373", icon: "⚪" };
+        };
+
+        const getTodayString = () => {
+            const d = new Date();
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        const todayDateStr = getTodayString();
+
+        const initialTasks = [
+            { id: "t1", title: "Reparar fuga en pasillo 4", description: "Fuga en sección sanitarios. Se necesita teflón y selladores de alta resistencia.", createdAt: todayDateStr, estimatedTime: "1h", section: "SANITARIOS", assignedTo: "Mantenimiento", status: "pending", priority: "MUY ALTA", image: "" },
+            { id: "t2", title: "Reposición de stock de barnices", description: "Colocar nuevos barnices acrílicos de exterior en la cabecera del pasillo.", createdAt: todayDateStr, estimatedTime: "2h", section: "PINTURAS", assignedTo: "Vendedor", status: "in-progress", priority: "MEDIA", image: "" },
+            { id: "t3", title: "Organizar cajas de click & collect", description: "Clasificar por orden alfabético de apellido de clientes.", createdAt: todayDateStr, estimatedTime: "3h", section: "CAJAS / CLICK & COLLECT", assignedTo: "Responsable", status: "completed", priority: "BAJA", finishedBy: "Ana Gómez", finishedVendedor: "Carlos", finishedAt: todayDateStr, image: "" },
+        ];
+
+        const initialNews = [
+            { id: "n1", title: "NUEVA IMPLANTACIÓN DE HERRAMIENTAS RYOBI", description: "Se ha completado la reestructuración completa de la cabecera de maquinaria en el pasillo 3. Se exponen las nuevos modelos de taladros sin cable con batería universal ONE+.", category: "IMPLANTACIÓN", createdAt: todayDateStr, author: "Dirección Central", image: "" },
+            { id: "n2", title: "LLEGADA DE CÉSPED ARTIFICIAL PREMIUM", description: "Nueva referencia de césped artificial de 40mm de altura resistente a rayos UV. Ideal para la campaña de primavera. Ubicado en la zona exterior de Jardín.", category: "PRODUCTO NUEVO", createdAt: todayDateStr, author: "Responsable Pasillo", image: "" }
+        ];
+
+        const Icons = {
+            Dashboard: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>`,
+            Tasks: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>`,
+            Plus: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>`,
+            News: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M16 8h2"/><path d="M16 12h2"/><path d="M16 16h2"/><path d="M6 8h6v8H6z"/></svg>`,
+            Trash: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
+            Menu: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`,
+            Close: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>`,
+            Download: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`,
+            Upload: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>`,
+            Calendar: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>`,
+            ChevronLeft: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+            ChevronRight: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+            Filter: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`,
+            Print: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>`,
+            FileSpreadsheet: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg>`,
+            Camera: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`,
+            ImageIcon: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`,
+            Sun: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`,
+            Moon: () => html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
+        };
+
+        const BauhausLogo = () => html`
+            <div className="flex gap-0.5 select-none">
+                ${['B', 'A', 'U', 'H', 'A', 'U', 'S'].map((char, i) => html`
+                    <div key=${i} className="bg-[#e30613] text-white w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-black text-lg md:text-xl relative font-bauhaus shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                        ${char}
+                        ${char === 'S' ? html`<span className="absolute top-0.5 right-0.5 text-[5px]">®</span>` : ''}
+                    </div>
+                `)}
+            </div>
+        `;
+
+        const App = () => {
+            const sdk = window.F_SDK || {};
+            const { 
+                db, auth, isMockFallback, 
+                signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+                doc, collection, addDoc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot 
+            } = sdk;
+
+            const [currentUser, setCurrentUser] = useState(() => {
+                const savedUser = localStorage.getItem(`bauhaus_active_user_${appId}`);
+                return savedUser ? JSON.parse(savedUser) : null;
+            });
+
+            // Estado para el manejo de Tema Oscuro / Claro
+            const [isDarkMode, setIsDarkMode] = useState(() => {
+                return localStorage.getItem(`bauhaus_theme_${appId}`) === 'dark';
+            });
+            
+            const [tasks, setTasks] = useState(() => {
+                const local = localStorage.getItem(`bauhaus_tasks_${appId}`);
+                return local ? JSON.parse(local) : initialTasks;
+            });
+
+            const [news, setNews] = useState(() => {
+                const local = localStorage.getItem(`bauhaus_news_${appId}`);
+                return local ? JSON.parse(local) : initialNews;
+            });
+
+            const [view, setView] = useState('dashboard');
+            const [isCreatingNews, setIsCreatingNews] = useState(false);
+            const [confirmDelete, setConfirmDelete] = useState(null);
+            const [confirmDeleteNews, setConfirmDeleteNews] = useState(null);
+            
+            // Estado para el modal de Finalizar Tarea
+            const [completingTask, setCompletingTask] = useState(null);
+
+            const [loading, setLoading] = useState(true);
+            const [firebaseUser, setFirebaseUser] = useState(null);
+            const [connectionStatus, setConnectionStatus] = useState('connecting');
+            const [connectionError, setConnectionError] = useState('');
+
+            const [isMobile, setIsMobile] = useState(false);
+            const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+            const [activeMobileTask, setActiveMobileTask] = useState(null);
+            const [activeMobileNews, setActiveMobileNews] = useState(null);
+
+            // Filtros de sección por defecto adaptativos según el rol de entrada
+            const [selectedDashboardSection, setSelectedDashboardSection] = useState('TODAS');
+            const [selectedListSection, setSelectedListSection] = useState('TODAS');
+            const [selectedNewsCategory, setSelectedNewsCategory] = useState('TODAS');
+
+            // Inicializar el calendario con el mes actual
+            const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
+            const [selectedDayTasks, setSelectedDayTasks] = useState([]);
+            const [selectedCalendarDayString, setSelectedCalendarDayString] = useState(null);
+
+            // Estados del login unificado y directo
+            const [loginMode, setLoginMode] = useState(null); // 'admin', 'consulta' o 'direccion'
+            const [adminUsername, setAdminUsername] = useState('');
+            const [adminPassword, setAdminPassword] = useState('');
+            const [selectedSectionForConsulta, setSelectedSectionForConsulta] = useState('');
+            const [loginError, setLoginError] = useState('');
+
+            const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+
+            // Referencias y estados para el de fotos en la creación de tareas
+            const fileInputRef = useRef(null);
+            const cameraInputRef = useRef(null);
+            const [taskPhoto, setTaskPhoto] = useState('');
+
+            // Referencia para la carga de copias de seguridad (Backup JSON)
+            const backupFileInputRef = useRef(null);
+
+            // Referencias y estados para el de fotos en la creación de novedades
+            const newsFileInputRef = useRef(null);
+            const newsCameraInputRef = useRef(null);
+            const [newsPhoto, setNewsPhoto] = useState('');
+
+            // Alternar tema y guardarlo en caché
+            const toggleTheme = () => {
+                setIsDarkMode(prev => {
+                    const nextMode = !prev;
+                    localStorage.setItem(`bauhaus_theme_${appId}`, nextMode ? 'dark' : 'light');
+                    return nextMode;
+                });
+            };
+
+            // Helper para comprobar si el usuario actual tiene permisos globales de visualización (Solo Dirección o Administrador)
+            const hasGlobalViewPrivileges = () => {
+                if (!currentUser) return false;
+                if (currentUser.role === 'admin') return true;
+                if (currentUser.role === 'consulta' && currentUser.section === 'DIRECCIÓN') {
+                    return true;
+                }
+                return false;
+            };
+
+            // Permiso dinámico para comprobar quién puede crear/publicar novedades en el Tablón Informativo
+            const canCreateNews = currentUser && (
+                currentUser.role === 'admin' ||
+                (currentUser.role === 'consulta' && (currentUser.section === 'DIRECCIÓN' || currentUser.section === 'RRHH'))
+            );
+
+            const triggerNotification = (message, type = 'success') => {
+                setNotification({ show: true, message, type });
+                setTimeout(() => {
+                    setNotification(prev => ({ ...prev, show: false }));
+                }, 4500);
+            };
+
+            // Al iniciar sesión o refrescar, configurar los filtros predeterminados según sección del usuario
+            useEffect(() => {
+                if (currentUser) {
+                    localStorage.setItem(`bauhaus_active_user_${appId}`, JSON.stringify(currentUser));
+                    if (currentUser.role === 'consulta' && currentUser.section) {
+                        if (!hasGlobalViewPrivileges()) {
+                            setSelectedDashboardSection(currentUser.section);
+                            setSelectedListSection(currentUser.section);
+                        } else {
+                            setSelectedDashboardSection('TODAS');
+                            setSelectedListSection('TODAS');
+                        }
+                    } else {
+                        setSelectedDashboardSection('TODAS');
+                        setSelectedListSection('TODAS');
+                    }
+                } else {
+                    localStorage.removeItem(`bauhaus_active_user_${appId}`);
+                }
+            }, [currentUser]);
+
+            useEffect(() => {
+                localStorage.setItem(`bauhaus_tasks_${appId}`, JSON.stringify(tasks));
+            }, [tasks]);
+
+            useEffect(() => {
+                localStorage.setItem(`bauhaus_news_${appId}`, JSON.stringify(news));
+            }, [news]);
+
+            // Efecto de Auto-eliminación de tareas y novedades con más de un mes de antigüedad (30 días)
+            useEffect(() => {
+                if (loading === false) {
+                    const cleanExpiredItems = async () => {
+                        const now = new Date();
+                        const thirtyDaysAgo = new Date();
+                        thirtyDaysAgo.setDate(now.getDate() - 30);
+
+                        // 1. Limpieza de tareas completadas hace más de 30 días
+                        const expiredTasks = tasks.filter(t => {
+                            if (t.status !== 'completed') return false;
+                            const finishDateStr = t.finishedAt || t.createdAt;
+                            if (!finishDateStr) return false;
+                            const finishDate = new Date(finishDateStr);
+                            return finishDate < thirtyDaysAgo;
+                        });
+
+                        if (expiredTasks.length > 0) {
+                            const expiredIds = expiredTasks.map(t => t.id);
+                            setTasks(prev => prev.filter(t => !expiredIds.includes(t.id)));
+                            
+                            if (db && auth.currentUser) {
+                                for (const task of expiredTasks) {
+                                    if (!task.id.startsWith("temp-")) {
+                                        try {
+                                            const taskDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', task.id);
+                                            await deleteDoc(taskDocRef);
+                                        } catch (e) {
+                                            console.error("Error auto-eliminando tarea de Firestore: ", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Limpieza de novedades creadas hace más de 30 días
+                        const expiredNews = news.filter(n => {
+                            if (!n.createdAt) return false;
+                            const newsDate = new Date(n.createdAt);
+                            return newsDate < thirtyDaysAgo;
+                        });
+
+                        if (expiredNews.length > 0) {
+                            const expiredNewsIds = expiredNews.map(n => n.id);
+                            setNews(prev => prev.filter(n => !expiredNewsIds.includes(n.id)));
+
+                            if (db && auth.currentUser) {
+                                for (const item of expiredNews) {
+                                    if (!item.id.startsWith("temp-news-")) {
+                                        try {
+                                            const newsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'news', item.id);
+                                            await deleteDoc(newsDocRef);
+                                        } catch (e) {
+                                            console.error("Error auto-eliminando novedad de Firestore: ", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    cleanExpiredItems();
+                }
+            }, [loading, db, auth?.currentUser]);
+
+            useEffect(() => {
+                const handleResize = () => setIsMobile(window.innerWidth < 768);
+                handleResize();
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
+
+            useEffect(() => {
+                if (!auth) {
+                    setConnectionStatus('offline');
+                    setConnectionError('SDK de Firebase no inicializado en el cliente.');
+                    setLoading(false);
+                    return;
+                }
+
+                const initAuth = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (e) {
+                        console.warn("Autenticación Firebase rechazada, usando modo local.", e);
+                        setConnectionStatus('offline');
+                        setFirebaseUser({ uid: "mock-user", isAnonymous: true });
+                        setLoading(false);
+                    }
+                };
+                initAuth();
+
+                const unsubscribe = onAuthStateChanged(auth, (usr) => {
+                    if (usr) setFirebaseUser(usr);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            useEffect(() => {
+                if (!firebaseUser || !db) {
+                    setLoading(false);
+                    return;
+                }
+
+                const tasksCol = collection(db, 'artifacts', appId, 'public', 'data', 'tasks');
+                const newsCol = collection(db, 'artifacts', appId, 'public', 'data', 'news');
+
+                const unsubscribeTasks = onSnapshot(tasksCol, 
+                    (snapshot) => {
+                        const tasksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        tasksData.sort((a, b) => {
+                            const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                            const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                            return dateB - dateA;
+                        });
+                        setTasks(tasksData);
+                        setConnectionStatus('online');
+                        setConnectionError('');
+                        setLoading(false);
+                    },
+                    (error) => {
+                        setConnectionStatus('offline');
+                        setConnectionError(`Error Firestore Tasks: ${error.message}`);
+                        setLoading(false);
+                    }
+                );
+
+                const unsubscribeNews = onSnapshot(newsCol,
+                    (snapshot) => {
+                        const newsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        newsData.sort((a, b) => {
+                            const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                            const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                            return dateB - dateA;
+                        });
+                        setNews(newsData);
+                    },
+                    (error) => {
+                        console.warn("Error Firestore News:", error);
+                    }
+                );
+
+                return () => { unsubscribeTasks(); unsubscribeNews(); };
+            }, [firebaseUser]);
+
+            const processImageFile = (file, isNews = false) => {
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const MAX_HEIGHT = 800;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                        if (isNews) {
+                            setNewsPhoto(compressedBase64);
+                        } else {
+                            setTaskPhoto(compressedBase64);
+                        }
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const handleFileChange = (e) => {
+                const file = e.target.files[0];
+                processImageFile(file, false);
+            };
+
+            const handleCameraCapture = (e) => {
+                const file = e.target.files[0];
+                processImageFile(file, false);
+            };
+
+            const handleNewsFileChange = (e) => {
+                const file = e.target.files[0];
+                processImageFile(file, true);
+            };
+
+            const handleNewsCameraCapture = (e) => {
+                const file = e.target.files[0];
+                processImageFile(file, true);
+            };
+
+            const triggerFileSelect = () => {
+                if (fileInputRef.current) fileInputRef.current.click();
+            };
+
+            const triggerCameraCapture = () => {
+                if (cameraInputRef.current) cameraInputRef.current.click();
+            };
+
+            const triggerNewsFileSelect = () => {
+                if (newsFileInputRef.current) newsFileInputRef.current.click();
+            };
+
+            const triggerNewsCameraCapture = () => {
+                if (newsCameraInputRef.current) newsCameraInputRef.current.click();
+            };
+
+            const removeAttachedPhoto = () => {
+                setTaskPhoto('');
+                if (fileInputRef.current) fileInputRef.current.value = '';
+                if (cameraInputRef.current) cameraInputRef.current.value = '';
+            };
+
+            const removeNewsAttachedPhoto = () => {
+                setNewsPhoto('');
+                if (newsFileInputRef.current) newsFileInputRef.current.value = '';
+                if (newsCameraInputRef.current) newsCameraInputRef.current.value = '';
+            };
+
+            const addTask = async (taskData) => {
+                const newTask = { ...taskData, status: 'pending', image: taskPhoto };
+                const tempId = "temp-" + Date.now();
+                setTasks(prev => [{ id: tempId, ...newTask }, ...prev]);
+                
+                setTaskPhoto('');
+                setView('tasks');
+
+                if (db && auth.currentUser) {
+                    try {
+                        const tasksCol = collection(db, 'artifacts', appId, 'public', 'data', 'tasks');
+                        await addDoc(tasksCol, newTask);
+                        triggerNotification("Tarea sincronizada y guardada", "success");
+                    } catch (e) {
+                        triggerNotification("Guardado temporal local.", "error");
+                    }
+                }
+            };
+
+            const addNews = async (newsData) => {
+                const newNewsItem = { ...newsData, image: newsPhoto };
+                const tempId = "temp-news-" + Date.now();
+                setNews(prev => [{ id: tempId, ...newNewsItem }, ...prev]);
+
+                setNewsPhoto('');
+                setIsCreatingNews(false);
+
+                if (db && auth.currentUser) {
+                    try {
+                        const newsCol = collection(db, 'artifacts', appId, 'public', 'data', 'news');
+                        await addDoc(newsCol, newNewsItem);
+                        triggerNotification("Novedad sincronizada y guardada", "success");
+                    } catch (e) {
+                        triggerNotification("Guardado temporal local.", "error");
+                    }
+                }
+            };
+
+            const handleCompleteSubmit = async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const completeData = {
+                    status: 'completed',
+                    finishedBy: fd.get('finisher'),
+                    finishedVendedor: fd.get('vendedor'),
+                    finishedAt: fd.get('finishDate')
+                };
+
+                setTasks(prev => prev.map(t => t.id === completingTask.id ? { ...t, ...completeData } : t));
+
+                if (selectedCalendarDayString) {
+                    setSelectedDayTasks(prev => prev.map(t => t.id === completingTask.id ? { ...t, ...completeData } : t));
+                }
+
+                if (db && auth.currentUser && !completingTask.id.startsWith("temp-")) {
+                    try {
+                        const taskDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', completingTask.id);
+                        await updateDoc(taskDocRef, completeData);
+                        triggerNotification("Tarea finalizada con éxito", "success");
+                    } catch (err) {
+                        triggerNotification("Error de sincronización, finalizado localmente", "error");
+                    }
+                } else {
+                    triggerNotification("Tarea finalizada localmente", "success");
+                }
+                setCompletingTask(null);
+            };
+
+            const deleteTask = async (id) => {
+                setTasks(prev => prev.filter(t => t.id !== id));
+                if (selectedCalendarDayString) {
+                    setSelectedDayTasks(prev => prev.filter(t => t.id !== id));
+                }
+                setConfirmDelete(null);
+
+                if (db && auth.currentUser && !id.startsWith("temp-")) {
+                    try {
+                        const taskDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', id);
+                        await deleteDoc(taskDocRef);
+                        triggerNotification("Tarea correcta", "success");
+                    } catch (e) {
+                        triggerNotification("Fallo al borrar del servidor", "error");
+                    }
+                }
+            };
+
+            const deleteNews = async (id) => {
+                setNews(prev => prev.filter(n => n.id !== id));
+                setConfirmDeleteNews(null);
+
+                if (db && auth.currentUser && !id.startsWith("temp-news-")) {
+                    try {
+                        const newsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'news', id);
+                        await deleteDoc(newsDocRef);
+                        triggerNotification("Novedad eliminada con éxito", "success");
+                    } catch (e) {
+                        triggerNotification("Fallo al borrar la novedad del servidor", "error");
+                    }
+                }
+            };
+
+            const handleExportBackup = () => {
+                if (currentUser.role !== 'admin') {
+                    triggerNotification("No tienes permisos de administrador para exportar copias de seguridad.", "error");
+                    return;
+                }
+
+                const backupObject = {
+                    appId: appId,
+                    backupDate: new Date().toISOString(),
+                    tasks: tasks,
+                    news: news
+                };
+
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupObject, null, 2));
+                const downloadAnchor = document.createElement('a'); 
+                downloadAnchor.setAttribute("href", dataStr); 
+                downloadAnchor.setAttribute("download", `BAUHAUS_Backup_${new Date().toISOString().split('T')[0]}.json`);
+                document.body.appendChild(downloadAnchor); 
+                downloadAnchor.click(); 
+                downloadAnchor.remove();
+                triggerNotification("Copia de seguridad descargada correctamente.", "success");
+            };
+
+            const handleImportBackup = (event) => {
+                if (currentUser.role !== 'admin') {
+                    triggerNotification("Acceso denegado.", "error");
+                    return;
+                }
+
+                const fileReader = new FileReader(); 
+                const file = event.target.files[0]; 
+                if (!file) return;
+
+                fileReader.onload = async (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        
+                        if (!importedData.tasks && !importedData.news) {
+                            throw new Error("El archivo no contiene un formato de backup válido.");
+                        }
+
+                        if (importedData.tasks && Array.isArray(importedData.tasks)) {
+                            setTasks(importedData.tasks);
+                            if (db && auth.currentUser) {
+                                for (const t of importedData.tasks) {
+                                    const taskDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', t.id);
+                                    await setDoc(taskDocRef, t);
+                                }
+                            }
+                        }
+
+                        if (importedData.news && Array.isArray(importedData.news)) {
+                            setNews(importedData.news);
+                            if (db && auth.currentUser) {
+                                for (const n of importedData.news) {
+                                    const newsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'news', n.id);
+                                    await setDoc(newsDocRef, n);
+                                }
+                            }
+                        }
+
+                        triggerNotification("Backup restaurado y sincronizado con éxito", "success");
+                    } catch (err) {
+                        console.error(err);
+                        triggerNotification("Error: Archivo de copia de seguridad corrupto o incompatible.", "error");
+                    }
+                };
+                fileReader.readAsText(file);
+                if (backupFileInputRef.current) {
+                    backupFileInputRef.current.value = '';
+                }
+            };
+
+            const triggerBackupFileSelect = () => {
+                if (backupFileInputRef.current) {
+                    backupFileInputRef.current.click();
+                }
+            };
+
+            const handlePrintTodayTasks = () => {
+                let filteredToday = tasks.filter(t => t.createdAt === todayDateStr);
+                if (!hasGlobalViewPrivileges() && currentUser.section) {
+                    // Si el usuario es de Mantenimiento, debe poder imprimir también las de su sección o las asignadas a él
+                    if (currentUser.section === 'MANTENIMIENTO') {
+                        filteredToday = filteredToday.filter(t => 
+                            t.section === 'MANTENIMIENTO' || 
+                            String(t.assignedTo).toUpperCase().trim() === 'MANTENIMIENTO'
+                        );
+                    } else {
+                        filteredToday = filteredToday.filter(t => t.section === currentUser.section);
+                    }
+                }
+
+                if (filteredToday.length === 0) {
+                    triggerNotification("No hay tareas registradas hoy bajo tu filtro actual para imprimir.", "warning");
+                    return;
+                }
+                const printWindow = window.open('', '_blank');
+                if (!printWindow) return;
+
+                const pendingTasks = filteredToday.filter(t => t.status !== 'completed');
+                const completedTasks = filteredToday.filter(t => t.status === 'completed');
+
+                const pendingHTML = pendingTasks.length > 0 ? pendingTasks.map((t, index) => `
+                    <div style="border: 2px solid black; padding: 12px; margin-bottom: 12px; font-family: sans-serif; position: relative; page-break-inside: avoid;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="background-color: black; color: white; padding: 2px 8px; font-size: 10px; font-weight: bold; text-transform: uppercase;">${t.section}</span>
+                            <span style="border: 1px solid black; padding: 2px 8px; font-size: 10px; font-weight: bold; text-transform: uppercase;">PRIORIDAD: ${t.priority || "MEDIA"}</span>
+                        </div>
+                        <h4 style="margin: 8px 0 4px 0; font-size: 16px; text-transform: uppercase; letter-spacing: -0.5px;">${index + 1}. ${t.title}</h4>
+                        <p style="margin: 4px 0; font-size: 12px; color: #444;">${t.description || 'Sin instrucciones adicionales.'}</p>
+                        ${t.image ? `<div style="margin-top: 8px; margin-bottom: 8px;"><img src="${t.image}" style="max-height: 150px; border: 1px solid black; display: block;" /></div>` : ''}
+                        <div style="margin-top: 8px; font-size: 10px; font-weight: bold; border-top: 1px solid #ddd; padding-top: 6px;">
+                            ENCARGADO: ${t.assignedTo} | TIEMPO ESTIMADO: ${t.estimatedTime}
+                        </div>
+                    </div>
+                `).join('') : '<p style="font-family: sans-serif; font-style: italic;">No hay tareas pendientes.</p>';
+
+                const completedHTML = completedTasks.length > 0 ? completedTasks.map((t, index) => `
+                    <div style="border: 2px solid #22c55e; padding: 12px; margin-bottom: 12px; font-family: sans-serif; background-color: #f0fdf4; page-break-inside: avoid;">
+                        <span style="background-color: #22c55e; color: white; padding: 2px 8px; font-size: 10px; font-weight: bold; text-transform: uppercase;">${t.section} (COMPLETADA)</span>
+                        <h4 style="margin: 8px 0 4px 0; font-size: 14px; text-decoration: line-through; color: #15803d;">${t.title}</h4>
+                        <p style="margin: 2px 0; font-size: 10px; color: #444;">Finalizado por: <strong>${t.finishedBy}</strong> | Vendedor: <strong>${t.finishedVendedor}</strong></p>
+                        ${t.image ? `<div style="margin-top: 6px; margin-bottom: 6px;"><img src="${t.image}" style="max-height: 80px; border: 1px solid #22c55e; opacity: 0.8;" /></div>` : ''}
+                    </div>
+                `).join('') : '<p style="font-family: sans-serif; font-style: italic; color: #777;">No se han completado tareas.</p>';
+
+                printWindow.document.write(`
+                    <html>
+                    <head>
+                        <title>Reporte Diario de Tareas - BAUHAUS</title>
+                        <style>
+                            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 40px; color: #000; }
+                            .header { border-bottom: 5px solid #e30613; padding-bottom: 15px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+                            .logo-box { background-color: #e30613; color: white; padding: 10px 15px; font-size: 24px; font-weight: 900; letter-spacing: -1px; }
+                            .title-area { text-align: right; }
+                            .section-title { font-size: 18px; font-weight: bold; background: #000; color: white; display: inline-block; padding: 4px 10px; margin-bottom: 15px; text-transform: uppercase; }
+                            @media print {
+                                body { margin: 20px; }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <div class="logo-box">BAUHAUS</div>
+                            <div class="title-area">
+                                <h2 style="margin: 0; font-size: 18px; text-transform: uppercase;">PLANIFICACIÓN DIARIA</h2>
+                                <p style="margin: 2px 0 0 0; font-size: 12px; font-weight: bold; color: #555;">DÍA: ${todayDateStr}</p>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 30px;">
+                            <span class="section-title">Trabajos Pendientes (${pendingTasks.length})</span>
+                            ${pendingHTML}
+                        </div>
+
+                        <div>
+                            <span class="section-title" style="background-color: #22c55e;">Trabajos Finalizados Hoy (${completedTasks.length})</span>
+                            ${completedHTML}
+                        </div>
+
+                        <div style="margin-top: 50px; border-top: 1px solid #000; padding-top: 10px; font-size: 10px; text-align: center; color: #666;">
+                            BAUHAUS Gestión de Tareas Remota • Generado el ${new Date().toLocaleString('es-ES')}
+                        </div>
+
+                        <script>
+                            window.onload = function() {
+                                window.print();
+                            }
+                        <\/script>
+                    </body>
+                    </html>
+                `);
+                printWindow.document.close();
+            };
+
+            const handleLoginSubmit = (e) => {
+                e.preventDefault();
+                if (loginMode === 'admin') {
+                    if (adminUsername.trim() === 'admin' && adminPassword === 'bcn807') {
+                        setCurrentUser({
+                            id: 'admin',
+                            name: 'Administrador del Sistema',
+                            role: 'admin',
+                            position: 'ADMINISTRADOR',
+                            section: null
+                        });
+                        setLoginMode(null);
+                        setAdminUsername('');
+                        setAdminPassword('');
+                        setLoginError('');
+                    } else {
+                        setLoginError('Usuario o contraseña de administrador incorrectos.');
+                    }
+                } else if (loginMode === 'direccion') {
+                    if (adminUsername.trim() === 'dir807' && adminPassword === 'bcn807') {
+                        setCurrentUser({
+                            id: 'direccion-tienda',
+                            name: 'Dirección de Tienda',
+                            role: 'consulta',
+                            position: 'DIRECCIÓN',
+                            section: 'DIRECCIÓN'
+                        });
+                        setLoginMode(null);
+                        setAdminUsername('');
+                        setAdminPassword('');
+                        setLoginError('');
+                    } else {
+                        setLoginError('Usuario o contraseña de Dirección de Tienda incorrectos.');
+                    }
+                } else if (loginMode === 'consulta') {
+                    if (selectedSectionForConsulta) {
+                        setCurrentUser({
+                            id: `consulta-${selectedSectionForConsulta.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                            name: `Consulta ${selectedSectionForConsulta}`,
+                            role: 'consulta',
+                            position: 'CONSULTA',
+                            section: selectedSectionForConsulta
+                        });
+                        setLoginMode(null);
+                        setLoginError('');
+                    } else {
+                        setLoginError('Por favor, selecciona una sección para continuar.');
+                    }
+                }
+            };
+
+            const getVisibleTasks = () => {
+                if (hasGlobalViewPrivileges()) {
+                    return tasks;
+                }
+                if (currentUser && currentUser.role === 'consulta' && currentUser.section) {
+                    return tasks.filter(t => {
+                        const isSameSection = t.section === currentUser.section;
+                        // Si el perfil activo es Mantenimiento, debe ver también cualquier tarea asignada a mantenimiento independientemente de la sección creadora
+                        const isAssignedToMantenimiento = currentUser.section === 'MANTENIMIENTO' && 
+                            (String(t.assignedTo).toUpperCase().trim() === 'MANTENIMIENTO');
+                        return isSameSection || isAssignedToMantenimiento;
+                    });
+                }
+                return [];
+            };
+
+            const visibleTasksList = getVisibleTasks();
+
+            // Modificado para que si se selecciona Mantenimiento muestre también las que tienen asignado Mantenimiento en operario
+            const dashboardTasks = selectedDashboardSection === 'TODAS' ? visibleTasksList : visibleTasksList.filter(t => {
+                if (selectedDashboardSection === 'MANTENIMIENTO') {
+                    return t.section === 'MANTENIMIENTO' || String(t.assignedTo).toUpperCase().trim() === 'MANTENIMIENTO';
+                }
+                return t.section === selectedDashboardSection;
+            });
+
+            const stats = {
+                pending: dashboardTasks.filter(t => t.status === 'pending').length,
+                inProgress: dashboardTasks.filter(t => t.status === 'in-progress').length,
+                completed: dashboardTasks.filter(t => t.status === 'completed').length,
+                total: dashboardTasks.length
+            };
+
+            // Modificado para que si se selecciona Mantenimiento muestre también las asignadas a él en el listado de tareas general
+            const listFilteredTasks = selectedListSection === 'TODAS' ? visibleTasksList : visibleTasksList.filter(t => {
+                if (selectedListSection === 'MANTENIMIENTO') {
+                    return t.section === 'MANTENIMIENTO' || String(t.assignedTo).toUpperCase().trim() === 'MANTENIMIENTO';
+                }
+                return t.section === selectedListSection;
+            });
+
+            const listFilteredNews = selectedNewsCategory === 'TODAS' ? news : news.filter(n => n.category === selectedNewsCategory);
+            
+            const todayAllTasks = visibleTasksList.filter(t => t.createdAt === todayDateStr);
+            const todayPendingTasks = todayAllTasks.filter(t => t.status !== 'completed');
+            const todayCompletedTasks = todayAllTasks.filter(t => t.status === 'completed');
+
+            const handleMobileNavigation = (targetView) => { setView(targetView); setMobileMenuOpen(false); };
+            const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+            const getFirstDayOfMonth = (year, month) => { let day = new Date(year, month, 1).getDay(); return day === 0 ? 6 : day - 1; };
+            const handlePrevMonth = () => {
+                setCurrentCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+                setSelectedCalendarDayString(null);
+                setSelectedDayTasks([]);
+            };
+            const handleNextMonth = () => {
+                setCurrentCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+                setSelectedCalendarDayString(null);
+                setSelectedDayTasks([]);
+            };
+            const handleDayClick = (dayNum) => {
+                const dateStr = `${currentCalendarDate.getFullYear()}-${String(currentCalendarDate.getMonth() + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                setSelectedDayTasks(visibleTasksList.filter(t => t.createdAt === dateStr));
+                setSelectedCalendarDayString(dateStr);
+            };
+
+            const year = currentCalendarDate.getFullYear(); const month = currentCalendarDate.getMonth();
+            const daysInMonth = getDaysInMonth(year, month); const firstDayIndex = getFirstDayOfMonth(year, month);
+            const calendarDays = Array(firstDayIndex).fill(null).concat(Array.from({length: daysInMonth}, (_, i) => i + 1));
+            const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+            if (loading) {
+                return html`<div className="min-h-screen flex items-center justify-center bg-neutral-100 font-bauhaus uppercase text-xs tracking-wider text-neutral-800">Cargando sistema...</div>`;
+            }
+
+            if (!currentUser) {
+                return html`
+                    <div className=${`min-h-screen flex items-center justify-center p-4 transition-colors duration-200 ${isDarkMode ? 'bg-zinc-950 text-white' : 'bg-neutral-100 text-black'}`}>
+                        <div className="absolute top-4 right-4">
+                            <button 
+                                onClick=${toggleTheme} 
+                                className=${`p-2.5 border-2 flex items-center gap-2 font-bauhaus text-[9px] uppercase tracking-wide transition-all ${
+                                    isDarkMode 
+                                    ? 'border-white bg-zinc-900 text-white shadow-[3px_3px_0px_0px_rgba(227,6,19,1)]' 
+                                    : 'border-black bg-white text-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]'
+                                }`}
+                            >
+                                <${isDarkMode ? Icons.Sun : Icons.Moon} /> ${isDarkMode ? 'Modo Claro' : 'Modo Oscuro'}
+                            </button>
+                        </div>
+
+                        <div className=${`max-w-md w-full border-[4px] md:border-[6px] p-6 md:p-10 transition-all ${
+                            isDarkMode 
+                            ? 'bg-zinc-900 border-white shadow-[10px_10px_0px_0px_rgba(227,6,19,1)] md:shadow-[20px_20px_0px_0px_rgba(227,6,19,1)]' 
+                            : 'bg-white border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] md:shadow-[20px_20px_0px_0px_rgba(0,0,0,1)]'
+                        }`}>
+                            <div className="flex flex-col items-center mb-6 md:mb-8">
+                                <${BauhausLogo} />
+                                <div className=${`h-1 w-full my-4 md:my-5 ${isDarkMode ? 'bg-white' : 'bg-black'}`}></div>
+                                <h2 className="font-bauhaus text-lg md:text-xl uppercase tracking-tight text-center">Gestión de Tareas Remota</h2>
+                            </div>
+
+                            ${!loginMode ? html`
+                                <div className="space-y-4">
+                                    <p className="text-center text-[9px] font-bold uppercase text-zinc-500 mb-2 tracking-widest">SELECCIONA EL TIPO DE ACCESO</p>
+                                    
+                                    <button
+                                        onClick=${() => setLoginMode('consulta')}
+                                        className="w-full p-4 border-4 border-black bg-[#e30613] text-white hover:bg-black transition-colors flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                    >
+                                        <span className="font-bauhaus text-xs md:text-sm uppercase tracking-wide">Acceso de Consulta (Sin Contraseña)</span>
+                                        <span className="text-sm font-bold">→</span>
+                                    </button>
+
+                                    <button
+                                        onClick=${() => setLoginMode('direccion')}
+                                        className="w-full p-4 border-4 border-black bg-zinc-800 text-white hover:bg-black transition-colors flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                    >
+                                        <span className="font-bauhaus text-xs md:text-sm uppercase tracking-wide">Acceso Dirección (Autenticado)</span>
+                                        <span className="text-sm font-bold">🏢</span>
+                                    </button>
+
+                                    <button
+                                        onClick=${() => setLoginMode('admin')}
+                                        className=${`w-full p-4 border-4 transition-colors flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${
+                                            isDarkMode 
+                                            ? 'bg-zinc-850 text-white border-white hover:bg-white hover:text-black' 
+                                            : 'bg-white text-black border-black hover:bg-black hover:text-white'
+                                        }`}
+                                    >
+                                        <span className="font-bauhaus text-xs md:text-sm uppercase tracking-wide">Acceso Administración (Control Total)</span>
+                                        <span className="text-sm font-bold">🔑</span>
+                                    </button>
+                                </div>
+                            ` : loginMode === 'consulta' ? html`
+                                <form onSubmit=${handleLoginSubmit} className="space-y-4">
+                                    <div className=${`flex items-center justify-between mb-4 border-b-2 pb-2 ${isDarkMode ? 'border-zinc-700' : 'border-black'}`}>
+                                        <p className="font-bauhaus text-xs uppercase font-bold text-[#e30613]">ACCESO DE CONSULTA</p>
+                                        <button type="button" onClick=${() => { setLoginMode(null); setLoginError(''); }} className=${`text-[9px] font-bauhaus uppercase font-bold hover:text-zinc-500 ${isDarkMode ? 'text-white' : 'text-black'}`}>← Volver</button>
+                                    </div>
+
+                                    ${loginError && html`
+                                        <div className="bg-[#e30613] text-white p-2 text-center text-[10px] font-bold uppercase border-2 border-black">
+                                            ${loginError}
+                                        </div>
+                                    `}
+
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold">Selecciona tu sección o departamento</label>
+                                        <select
+                                            value=${selectedSectionForConsulta}
+                                            onChange=${e => setSelectedSectionForConsulta(e.target.value)}
+                                            required
+                                            className=${`w-full p-3 border-2 text-xs font-bold uppercase focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}
+                                        >
+                                            <option value="">-- SELECCIONA UNA SECCIÓN --</option>
+                                            ${Object.keys(sectionColors).filter(name => name !== "DIRECCIÓN").map(name => html`
+                                                <option key=${name} value=${name}>${name}</option>
+                                            `)}
+                                        </select>
+                                    </div>
+
+                                    <button type="submit" className=${`w-full p-4 font-bauhaus uppercase text-xs border-2 transition-all font-bold ${
+                                        isDarkMode 
+                                        ? 'bg-white text-black border-white hover:bg-zinc-200 shadow-[4px_4px_0px_0px_rgba(227,6,19,1)]' 
+                                        : 'bg-black text-white border-black hover:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                                    }`}>
+                                        Ingresar a la Plataforma
+                                    </button>
+                                </form>
+                            ` : loginMode === 'direccion' ? html`
+                                <form onSubmit=${handleLoginSubmit} className="space-y-4">
+                                    <div className=${`flex items-center justify-between mb-4 border-b-2 pb-2 ${isDarkMode ? 'border-zinc-700' : 'border-black'}`}>
+                                        <p className="font-bauhaus text-xs uppercase font-bold text-[#e30613]">ACCESO DIRECCIÓN DE TIENDA</p>
+                                        <button type="button" onClick=${() => { setLoginMode(null); setLoginError(''); setAdminUsername(''); setAdminPassword(''); }} className=${`text-[9px] font-bauhaus uppercase font-bold hover:text-zinc-500 ${isDarkMode ? 'text-white' : 'text-black'}`}>← Volver</button>
+                                    </div>
+
+                                    ${loginError && html`
+                                        <div className="bg-[#e30613] text-white p-2 text-center text-[10px] font-bold uppercase border-2 border-black">
+                                            ${loginError}
+                                        </div>
+                                    `}
+
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Nombre de Usuario</label>
+                                        <input
+                                            type="text"
+                                            value=${adminUsername}
+                                            onChange=${e => setAdminUsername(e.target.value)}
+                                            required
+                                            className=${`w-full p-3 border-2 text-xs font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}
+                                            placeholder="Introduce 'dir807'"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Contraseña</label>
+                                        <input
+                                            type="password"
+                                            value=${adminPassword}
+                                            onChange=${e => setAdminPassword(e.target.value)}
+                                            required
+                                            className=${`w-full p-3 border-2 text-xs font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}
+                                            placeholder="••••••••"
+                                        />
+                                    </div>
+
+                                    <button type="submit" className=${`w-full p-4 font-bauhaus uppercase text-xs border-2 transition-all font-bold ${
+                                        isDarkMode 
+                                        ? 'bg-white text-black border-white hover:bg-zinc-200 shadow-[4px_4px_0px_0px_rgba(227,6,19,1)]' 
+                                        : 'bg-black text-white border-black hover:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                                    }`}>
+                                        Autenticar Dirección
+                                    </button>
+                                </form>
+                            ` : html`
+                                <form onSubmit=${handleLoginSubmit} className="space-y-4">
+                                    <div className=${`flex items-center justify-between mb-4 border-b-2 pb-2 ${isDarkMode ? 'border-zinc-700' : 'border-black'}`}>
+                                        <p className="font-bauhaus text-xs uppercase font-bold text-neutral-500">ACCESO ADMINISTRACIÓN</p>
+                                        <button type="button" onClick=${() => { setLoginMode(null); setLoginError(''); setAdminUsername(''); setAdminPassword(''); }} className=${`text-[9px] font-bauhaus uppercase font-bold hover:text-zinc-500 ${isDarkMode ? 'text-white' : 'text-black'}`}>← Volver</button>
+                                    </div>
+
+                                    ${loginError && html`
+                                        <div className="bg-[#e30613] text-white p-2 text-center text-[10px] font-bold uppercase border-2 border-black">
+                                            ${loginError}
+                                        </div>
+                                    `}
+
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Nombre de Usuario</label>
+                                        <input
+                                            type="text"
+                                            value=${adminUsername}
+                                            onChange=${e => setAdminUsername(e.target.value)}
+                                            required
+                                            className=${`w-full p-3 border-2 text-xs font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}
+                                            placeholder="Introduce 'admin'"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Contraseña</label>
+                                        <input
+                                            type="password"
+                                            value=${adminPassword}
+                                            onChange=${e => setAdminPassword(e.target.value)}
+                                            required
+                                            className=${`w-full p-3 border-2 text-xs font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}
+                                            placeholder="••••••••"
+                                        />
+                                    </div>
+
+                                    <button type="submit" className=${`w-full p-4 font-bauhaus uppercase text-xs border-2 transition-all font-bold ${
+                                        isDarkMode 
+                                        ? 'bg-white text-black border-white hover:bg-zinc-200 shadow-[4px_4px_0px_0px_rgba(227,6,19,1)]' 
+                                        : 'bg-black text-white border-black hover:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                                    }`}>
+                                        Autenticar Administrador
+                                    </button>
+                                </form>
+                            `}
+                        </div>
+                    </div>
+                `;
+            }
+
+            return html`
+                <div className=${`flex flex-col md:flex-row min-h-screen relative transition-colors duration-200 ${isDarkMode ? 'bg-zinc-950 text-white' : 'bg-neutral-100 text-black'}`}>
+                    
+                    ${notification.show && html`
+                        <div className=${`fixed top-4 right-4 z-50 p-4 border-4 border-black font-bauhaus text-xs uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${
+                            notification.type === 'error' ? 'bg-[#e30613] text-white' : 
+                            notification.type === 'warning' ? 'bg-amber-400 text-black' : 
+                            'bg-emerald-500 text-white'
+                        }`}>
+                            ${notification.message}
+                        </div>
+                    `}
+
+                    ${isMobile && html`
+                        <header className="bg-black text-white p-4 flex items-center justify-between border-b-4 border-black sticky top-0 z-40">
+                            <div className="flex items-center gap-3">
+                                <${BauhausLogo} />
+                                <span className=${`w-2.5 h-2.5 rounded-full ${connectionStatus === 'online' ? 'bg-emerald-500' : connectionStatus === 'connecting' ? 'bg-amber-400' : 'bg-[#e30613]'}`}></span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick=${toggleTheme} className="p-2 border border-zinc-700 text-zinc-300">
+                                    <${isDarkMode ? Icons.Sun : Icons.Moon} />
+                                </button>
+                                <button onClick=${() => setMobileMenuOpen(!mobileMenuOpen)} className="p-1 border-2 border-white">
+                                    <${mobileMenuOpen ? Icons.Close : Icons.Menu} />
+                                </button>
+                            </div>
+                        </header>
+                    `}
+
+                    ${isMobile && mobileMenuOpen && html`
+                        <div className="fixed inset-x-0 top-[65px] bottom-0 bg-black text-white z-40 p-6 flex flex-col justify-between border-b-8 border-[#e30613] overflow-y-auto">
+                            <div className="space-y-3">
+                                <button onClick=${() => handleMobileNavigation('dashboard')} className=${`w-full text-left p-4 flex items-center gap-3 font-bauhaus text-[11px] uppercase border-l-4 ${view==='dashboard'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}><${Icons.Dashboard} /> Dashboard de Control</button>
+                                <button onClick=${() => handleMobileNavigation('tasks')} className=${`w-full text-left p-4 flex items-center gap-3 font-bauhaus text-[11px] uppercase border-l-4 ${view==='tasks'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}><${Icons.Tasks} /> Listado de Tareas</button>
+                                <button onClick=${() => handleMobileNavigation('news')} className=${`w-full text-left p-4 flex items-center gap-3 font-bauhaus text-[11px] uppercase border-l-4 ${view==='news'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}><${Icons.News} /> Novedades de Tienda</button>
+                                <button onClick=${() => handleMobileNavigation('create')} className=${`w-full text-left p-4 flex items-center gap-3 font-bauhaus text-[11px] uppercase border-l-4 ${view==='create'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}><${Icons.Plus} /> Agregar Solicitud</button>
+                            </div>
+                            <div className="border-t border-zinc-800 pt-6 mt-4">
+                                <p className="font-bauhaus text-[9px] uppercase text-[#e30613]">${currentUser.position}</p>
+                                <p className="font-bauhaus text-xs truncate mb-4">${currentUser.name}</p>
+                                <button onClick=${() => { setCurrentUser(null); setMobileMenuOpen(false); }} className="w-full p-3 bg-[#e30613] text-white font-bauhaus text-[10px] uppercase border-2 border-black hover:bg-white hover:text-black transition-all">Cerrar Sesión</button>
+                            </div>
+                        </div>
+                    `}
+
+                    ${!isMobile && html`
+                        <nav className="w-64 bg-black text-white p-6 flex flex-col shrink-0">
+                            <div className="bg-white p-4 mb-6 flex flex-col items-center justify-center border-b-4 border-black gap-2 shrink-0">
+                                <${BauhausLogo} />
+                            </div>
+
+                            <div className="mb-6">
+                                <button 
+                                    onClick=${toggleTheme} 
+                                    className="w-full p-2.5 border-2 border-zinc-700 hover:border-white text-zinc-300 hover:text-white flex items-center justify-center gap-2 font-bauhaus text-[9px] uppercase tracking-wider transition-all"
+                                >
+                                    <${isDarkMode ? Icons.Sun : Icons.Moon} />
+                                    ${isDarkMode ? 'Tema Claro' : 'Tema Oscuro'}
+                                </button>
+                            </div>
+
+                            <div className="space-y-2 shrink-0">
+                                <button onClick=${() => setView('dashboard')} className=${`w-full text-left p-3 flex items-center gap-3 font-bauhaus text-[10px] uppercase border-l-4 ${view==='dashboard'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}><${Icons.Dashboard} /> Dashboard de Control</button>
+                                <button onClick=${() => setView('tasks')} className=${`w-full text-left p-3 flex items-center gap-3 font-bauhaus text-[10px] uppercase border-l-4 ${view==='tasks'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}><${Icons.Tasks} /> Listado de Tareas</button>
+                                <button onClick=${() => setView('news')} className=${`w-full text-left p-3 flex items-center gap-3 font-bauhaus text-[10px] uppercase border-l-4 ${view==='news'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}><${Icons.News} /> Novedades de Tienda</button>
+                                <button onClick=${() => setView('create')} className=${`w-full text-left p-3 flex items-center gap-3 font-bauhaus text-[10px] uppercase border-l-4 ${view==='create'?'border-[#e30613] bg-zinc-800':'border-transparent text-zinc-500'}`}><${Icons.Plus} /> Agregar Solicitud</button>
+                            </div>
+                            
+                            ${currentUser.role === 'admin' ? html`
+                                <div className="mt-8 border-t border-zinc-800 pt-6 space-y-3 flex-grow overflow-y-auto">
+                                    <div className="flex items-center gap-2 text-zinc-400">
+                                        <${Icons.FileSpreadsheet} />
+                                        <span className="font-bauhaus text-[9px] uppercase tracking-wider font-bold">Copia de Seguridad</span>
+                                    </div>
+                                    <div className="space-y-2 text-black">
+                                        <button 
+                                            onClick=${handleExportBackup} 
+                                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 font-bauhaus text-[9px] uppercase border border-black flex items-center justify-center gap-1.5 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
+                                        >
+                                            <${Icons.Download} /> Crear Backup
+                                        </button>
+
+                                        <button 
+                                            onClick=${triggerBackupFileSelect} 
+                                            className="w-full bg-white hover:bg-zinc-100 text-black p-2.5 font-bauhaus text-[9px] uppercase border border-black flex items-center justify-center gap-1.5 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
+                                        >
+                                            <${Icons.Upload} /> Cargar Backup
+                                        </button>
+
+                                        <input 
+                                            type="file" 
+                                            ref=${backupFileInputRef} 
+                                            accept=".json" 
+                                            onChange=${handleImportBackup} 
+                                            className="hidden" 
+                                        />
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            ${currentUser.role !== 'admin' ? html`<div className="flex-grow"></div>` : ''}
+
+                            <div className="mt-4 border-t border-zinc-800 pt-4 shrink-0">
+                                <p className="font-bauhaus text-[9px] uppercase text-[#e30613]">${currentUser.position}</p>
+                                <p className="font-bauhaus text-[10px] truncate mb-4">${currentUser.name}</p>
+                                <button onClick=${() => setCurrentUser(null)} className="w-full p-2 bg-white text-black font-bauhaus text-[9px] uppercase border-2 border-black hover:bg-[#e30613] hover:text-white transition-colors">Cerrar Sesión</button>
+                            </div>
+                        </nav>
+                    `}
+
+                    <main className="flex-grow p-4 md:p-12 animate-fade-in relative z-0">
+                        <div className=${`flex justify-between items-start border-b-4 md:border-b-8 pb-2 md:pb-4 mb-6 md:mb-12 ${isDarkMode ? 'border-white' : 'border-black'}`}>
+                            <h1 className="font-bauhaus text-3xl md:text-5xl uppercase">
+                                ${view === 'dashboard' ? 'Panel de Control' : view === 'tasks' ? 'Listado' : view === 'news' ? 'Novedades de Tienda' : 'Crear Solicitud'}
+                            </h1>
+                        </div>
+
+                        ${view === 'dashboard' && html`
+                            <div className="space-y-12">
+                                <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                                    <div className=${`border-4 p-4 md:p-8 transition-colors ${
+                                        isDarkMode 
+                                        ? 'bg-zinc-900 border-white shadow-[8px_8px_0px_0px_rgba(227,6,19,1)] md:shadow-[15px_15px_0px_0px_rgba(227,6,19,1)]' 
+                                        : 'bg-white border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] md:shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]'
+                                    }`}>
+                                        <div className=${`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 md:mb-8 pb-4 border-b-2 ${isDarkMode ? 'border-zinc-800' : 'border-zinc-100'}`}>
+                                            <h3 className="font-bauhaus text-lg md:text-xl uppercase">Estadísticas de Trabajo</h3>
+                                            
+                                            ${hasGlobalViewPrivileges() ? html`
+                                                <select value=${selectedDashboardSection} onChange=${(e) => setSelectedDashboardSection(e.target.value)} className=${`p-2 border-2 uppercase text-[10px] font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}>
+                                                    <option value="TODAS">🔍 Todas las Secciones</option>
+                                                    ${Object.entries(sectionColors).map(([name, style]) => html`<option key=${name} value=${name}>${style.icon} ${name}</option>`)}
+                                                </select>
+                                            ` : html`
+                                                <div className=${`p-2 border-2 uppercase text-[10px] font-bold ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-neutral-50 border-black text-black'}`}>
+                                                    📍 ${getSectionStyle(currentUser.section).icon} ${currentUser.section}
+                                                </div>
+                                            `}
+                                        </div>
+                                        <div className="space-y-6 md:space-y-8">
+                                            ${[
+                                                { label: 'Pendientes', count: stats.pending, color: 'bg-[#e30613]' },
+                                                { label: 'En Proceso', count: stats.inProgress, color: 'bg-amber-400' },
+                                                { label: 'Completadas', count: stats.completed, color: 'bg-emerald-500' }
+                                            ].map(item => html`
+                                                <div key=${item.label} className="space-y-2">
+                                                    <div className="flex justify-between font-bauhaus text-[10px] uppercase">
+                                                        <span>${item.label}</span><span className="text-xl md:text-2xl">${item.count}</span>
+                                                    </div>
+                                                    <div className=${`h-6 md:h-8 border-2 relative ${isDarkMode ? 'bg-zinc-950 border-zinc-700' : 'bg-zinc-100 border-black'}`}>
+                                                        <div className=${`h-full ${item.color} transition-all`} style=${{width: `${stats.total ? (item.count/stats.total)*105 : 0}%`}}></div>
+                                                    </div>
+                                                </div>
+                                            `)}
+                                        </div>
+                                    </div>
+
+                                    <div className=${`border-4 p-4 md:p-6 flex flex-col justify-between transition-colors ${
+                                        isDarkMode 
+                                        ? 'bg-zinc-900 border-white shadow-[8px_8px_0px_0px_rgba(227,6,19,1)]' 
+                                        : 'bg-white border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'
+                                    }`}>
+                                        <div>
+                                            <div className=${`flex items-center justify-between border-b-2 pb-3 mb-4 ${isDarkMode ? 'border-zinc-700' : 'border-black'}`}>
+                                                <span className="bg-[#e30613] text-white font-bauhaus text-[9px] uppercase px-2 py-0.5 font-bold flex items-center gap-1"><${Icons.Calendar} /> Planificación</span>
+                                                <div className="flex items-center gap-1">
+                                                    <button onClick=${handlePrevMonth} className=${`p-1 border hover:bg-neutral-200 ${isDarkMode ? 'border-zinc-700 text-white' : 'border-black text-black'}`}><${Icons.ChevronLeft} /></button>
+                                                    <span className="font-bauhaus text-[9px] uppercase font-bold mx-1">${monthNames[month]} ${year}</span>
+                                                    <button onClick=${handleNextMonth} className=${`p-1 border hover:bg-neutral-200 ${isDarkMode ? 'border-zinc-700 text-white' : 'border-black text-black'}`}><${Icons.ChevronRight} /></button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-7 gap-1 text-center font-bauhaus text-[8px] text-neutral-500 uppercase mb-2">
+                                                <span>Lu</span><span>Ma</span><span>Mi</span><span>Ju</span><span>Vi</span><span>Sá</span><span>Do</span>
+                                            </div>
+                                            <div className="grid grid-cols-7 gap-1">
+                                                ${calendarDays.map((dayNum, idx) => {
+                                                    if (dayNum === null) return html`<div key=${`empty-${idx}`} className=${`h-8 md:h-10 border opacity-30 ${isDarkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-neutral-50 border-neutral-200'}`}></div>`;
+                                                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                                                    const dayTasks = visibleTasksList.filter(t => t.createdAt === dateStr);
+                                                    const hasTasks = dayTasks.length > 0;
+                                                    const isSelected = selectedCalendarDayString === dateStr;
+                                                    let customStyle = {};
+                                                    if (hasTasks) customStyle = { border: `3px solid ${getSectionStyle(dayTasks[0].section).hex}` };
+                                                    return html`
+                                                        <button key=${`day-${dayNum}`} onClick=${() => handleDayClick(dayNum)} style=${customStyle} className=${`h-8 md:h-10 flex flex-col justify-between p-1 border text-left relative transition-all ${
+                                                            isSelected 
+                                                            ? 'bg-red-100 text-black font-extrabold border-black ring-2 ring-black' 
+                                                            : isDarkMode ? 'border-zinc-800 text-white' : 'border-neutral-200 text-black'
+                                                        }`}>
+                                                            <span className="text-[9px] font-bold">${dayNum}</span>
+                                                            ${hasTasks ? html`
+                                                                <div className="flex gap-0.5 max-w-full overflow-hidden">
+                                                                    ${dayTasks.map((t, tIdx) => html`<span key=${t.id || tIdx} className=${`w-1.5 h-1.5 rounded-full inline-block shrink-0 ${getSectionStyle(t.section).bg}`}></span>`)}
+                                                                </div>
+                                                            ` : ''}
+                                                        </button>
+                                                    `;
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                ${selectedCalendarDayString ? html`
+                                    <div className="bg-[#171717] text-white border-4 border-black p-4 md:p-6 shadow-[8px_8px_0px_0px_rgba(227,6,19,1)] animate-fade-in">
+                                        <div className="flex justify-between items-center border-b border-zinc-700 pb-3 mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="bg-[#e30613] text-white text-[9px] font-bauhaus uppercase px-2 py-0.5 font-bold">Visor de Fecha</span>
+                                                <h3 className="font-bauhaus text-sm md:text-base uppercase tracking-tight">Trabajos Planificados para el ${selectedCalendarDayString}</h3>
+                                            </div>
+                                            <button onClick=${() => { setSelectedCalendarDayString(null); setSelectedDayTasks([]); }} className="text-zinc-400 hover:text-[#e30613] font-bold text-xs font-bauhaus uppercase">
+                                                [Cerrar ×]
+                                            </button>
+                                        </div>
+
+                                        ${selectedDayTasks.length === 0 ? html`
+                                            <p className="text-[10px] text-zinc-400 uppercase font-bold py-2">No hay trabajos registrados para esta fecha.</p>
+                                        ` : html`
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                ${selectedDayTasks.map(t => {
+                                                    const sStyle = getSectionStyle(t.section);
+                                                    const pStyle = getPriorityStyle(t.priority);
+                                                    return html`
+                                                        <div key=${t.id} className="border border-zinc-700 bg-zinc-900 p-4 relative flex flex-col justify-between">
+                                                            <div>
+                                                                <div className="flex items-start justify-between gap-2 mb-2">
+                                                                    <span className=${`text-[8px] font-bold px-2 py-0.5 uppercase ${sStyle.bg} ${sStyle.text} border ${sStyle.border}`}>
+                                                                        ${sStyle.icon} ${t.section}
+                                                                    </span>
+                                                                    <div className="flex gap-1">
+                                                                        <span className=${`text-[8px] font-bold px-2 py-0.5 uppercase border ${pStyle.bg} ${pStyle.border}`}>
+                                                                            ${pStyle.icon} ${pStyle.label}
+                                                                        </span>
+                                                                        <span className=${`text-[8px] font-bauhaus uppercase px-1.5 py-0.5 ${t.status === 'completed' ? 'bg-emerald-950 text-emerald-400' : 'bg-amber-950 text-amber-400'}`}>
+                                                                            ${t.status}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <h4 className="font-bauhaus text-xs text-white uppercase mb-2 leading-tight">${t.title}</h4>
+                                                                <p className="text-[10px] text-zinc-400 line-clamp-2 uppercase font-medium mb-3">${t.description}</p>
+                                                                
+                                                                ${t.image ? html`
+                                                                    <div className="mb-3 border border-zinc-700 overflow-hidden bg-black max-h-32 flex items-center justify-center">
+                                                                        <img src=${t.image} alt=${t.title} className="max-h-32 object-contain w-full" />
+                                                                    </div>
+                                                                ` : ''}
+                                                            </div>
+                                                            <div className="flex justify-between items-center pt-2 border-t border-zinc-800 text-[9px] font-bold">
+                                                                <span className="text-zinc-400 uppercase"><span className="text-zinc-300 font-bauhaus">Asignado:</span> ${t.assignedTo}</span>
+                                                                <div className="flex gap-2">
+                                                                    ${t.status !== 'completed' ? html`
+                                                                        <button onClick=${() => setCompletingTask(t)} className="bg-white hover:bg-zinc-200 text-black p-1 px-2 transition-colors font-bold uppercase text-[8px] font-bauhaus">
+                                                                            Finalizar
+                                                                        </button>
+                                                                    ` : (
+                                                                        currentUser.role === 'admin' ? html`
+                                                                            <button onClick=${() => setConfirmDelete(t.id)} className="p-1 border border-zinc-700 text-zinc-400 hover:text-[#e30613] hover:border-[#e30613] transition-colors bg-zinc-800"><${Icons.Trash} /></button>
+                                                                        ` : ''
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    `;
+                                                })}
+                                            </div>
+                                        `}
+                                    </div>
+                                ` : ''}
+
+                                <div className=${`border-4 p-4 md:p-8 transition-colors ${
+                                    isDarkMode 
+                                    ? 'bg-zinc-900 border-white shadow-[10px_10px_0px_0px_rgba(227,6,19,1)]' 
+                                    : 'bg-white border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]'
+                                }`}>
+                                    <div className=${`pb-3 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b-4 ${isDarkMode ? 'border-white' : 'border-black'}`}>
+                                        <div>
+                                            <span className="bg-[#e30613] text-white font-bauhaus text-[8px] uppercase px-2 py-0.5 font-bold">Plan de Hoy</span>
+                                            <h3 className="font-bauhaus text-lg md:text-xl uppercase mt-1">Tareas del día (${todayDateStr})</h3>
+                                        </div>
+                                        ${todayAllTasks.length > 0 ? html`
+                                            <button 
+                                                onClick=${handlePrintTodayTasks} 
+                                                className="bg-[#e30613] text-white p-3 border-2 border-black font-bauhaus uppercase text-[9px] font-bold flex items-center justify-center gap-2 transition-all hover:bg-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                                            >
+                                                <${Icons.Print} /> Imprimir Plan de Hoy
+                                            </button>
+                                        ` : ''}
+                                    </div>
+
+                                    ${todayAllTasks.length === 0 ? html`
+                                        <div className=${`border-2 border-dashed p-8 text-center uppercase font-bauhaus text-[10px] ${isDarkMode ? 'bg-zinc-950 border-zinc-800 text-zinc-600' : 'bg-neutral-50 border-zinc-300 text-zinc-400'}`}>
+                                            No hay tareas registradas para hoy (${todayDateStr}).
+                                        </div>
+                                    ` : html`
+                                        <div className="space-y-6">
+                                            ${todayPendingTasks.length > 0 ? html`
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <span className="w-2.5 h-2.5 bg-[#e30613] inline-block"></span>
+                                                        <h4 className=${`font-bauhaus text-xs uppercase tracking-wide font-bold ${isDarkMode ? 'text-zinc-200' : 'text-zinc-800'}`}>Trabajos Pendientes y en Curso (${todayPendingTasks.length})</h4>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                                        ${todayPendingTasks.map(t => {
+                                                            const sStyle = getSectionStyle(t.section);
+                                                            const pStyle = getPriorityStyle(t.priority);
+                                                            return html`
+                                                                <div key=${t.id} className=${`border-2 p-4 relative flex flex-col justify-between transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${isDarkMode ? 'bg-zinc-950 border-white text-white' : 'bg-white border-black text-black'}`}>
+                                                                    <div>
+                                                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                                                            <span className=${`text-[8px] font-bold px-2 py-0.5 uppercase ${sStyle.bg} ${sStyle.text} border ${sStyle.border}`}>
+                                                                                ${sStyle.icon} ${t.section}
+                                                                            </span>
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <span className=${`text-[8px] font-bold px-2 py-0.5 uppercase border ${pStyle.bg} ${pStyle.border}`}>
+                                                                                    ${pStyle.icon} ${pStyle.label}
+                                                                                </span>
+                                                                                <span className="text-[8px] text-neutral-400 font-bold">${t.estimatedTime}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <h4 className=${`font-bauhaus text-xs uppercase mb-2 leading-tight ${isDarkMode ? 'text-white' : 'text-neutral-900'}`}>${t.title}</h4>
+                                                                        <p className=${`text-[10px] line-clamp-3 uppercase font-medium mb-3 ${isDarkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>${t.description}</p>
+                                                                        
+                                                                        ${t.image ? html`
+                                                                            <div className="mb-3 border border-black overflow-hidden bg-neutral-100 max-h-40 flex items-center justify-center">
+                                                                                <img src=${t.image} alt=${t.title} className="max-h-40 object-contain w-full" />
+                                                                            </div>
+                                                                        ` : ''}
+                                                                    </div>
+                                                                    <div className=${`flex justify-between items-center pt-2 border-t text-[9px] font-bold ${isDarkMode ? 'border-zinc-800' : 'border-zinc-100'}`}>
+                                                                        <span className="text-zinc-500 uppercase"><span className=${`font-bauhaus ${isDarkMode ? 'text-white' : 'text-black'}`}>Asignado:</span> ${t.assignedTo}</span>
+                                                                        <button onClick=${() => setCompletingTask(t)} className="bg-black hover:bg-[#e30613] text-white p-1 border border-black px-2.5 transition-colors font-bold uppercase text-[8px] font-bauhaus shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                                                            Finalizar
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            `;
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+
+                                            ${todayCompletedTasks.length > 0 ? html`
+                                                <div className=${`pt-4 border-t-2 ${isDarkMode ? 'border-zinc-800' : 'border-zinc-100'}`}>
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <span className="w-2.5 h-2.5 bg-emerald-500 inline-block"></span>
+                                                        <h4 className="font-bauhaus text-xs uppercase text-emerald-600 tracking-wide font-bold">Trabajos Finalizados con Éxito (${todayCompletedTasks.length})</h4>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                                        ${todayCompletedTasks.map(t => {
+                                                            const sStyle = getSectionStyle(t.section);
+                                                            const pStyle = getPriorityStyle(t.priority);
+                                                            return html`
+                                                                <div key=${t.id} className="border border-emerald-300 p-4 bg-emerald-50/50 relative flex flex-col justify-between shadow-[2px_2px_0px_0px_rgba(34,197,94,0.2)]">
+                                                                    <div>
+                                                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                                                            <span className=${`text-[8px] font-bold px-2 py-0.5 uppercase ${sStyle.bg} ${sStyle.text} border ${sStyle.border}`}>
+                                                                                ${sStyle.icon} ${t.section}
+                                                                            </span>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className=${`text-[8px] font-bold px-1.5 py-0.5 uppercase border ${pStyle.bg} ${pStyle.border}`}>
+                                                                                    ${pStyle.icon} ${pStyle.label}
+                                                                                </span>
+                                                                                <span className="text-[8px] text-emerald-600 font-bauhaus uppercase font-bold">Completada</span>
+                                                                                ${currentUser.role === 'admin' ? html`
+                                                                                    <button onClick=${() => setConfirmDelete(t.id)} className="p-0.5 border border-emerald-300 text-zinc-400 hover:text-[#e30613] hover:border-[#e30613] transition-colors rounded" title="Eliminar tarea completada"><${Icons.Trash} /></button>
+                                                                                ` : ''}
+                                                                            </div>
+                                                                        </div>
+                                                                        <h4 className="font-bauhaus text-xs text-zinc-500 line-through uppercase mb-2 leading-tight">${t.title}</h4>
+                                                                        
+                                                                        ${t.image ? html`
+                                                                            <div className="my-2 border border-emerald-200 overflow-hidden bg-neutral-100 max-h-32 flex items-center justify-center opacity-75">
+                                                                                <img src=${t.image} alt=${t.title} className="max-h-32 object-contain w-full" />
+                                                                            </div>
+                                                                        ` : ''}
+
+                                                                        ${t.finishedBy ? html`
+                                                                            <div className=${`mt-2 space-y-0.5 p-2 border ${isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-emerald-100'}`}>
+                                                                                <p className="text-[8px] text-zinc-500 uppercase font-medium">Realizada por: <strong className=${isDarkMode ? 'text-white' : 'text-zinc-900'}>${t.finishedBy}</strong></p>
+                                                                                <p className="text-[8px] text-zinc-500 uppercase font-medium">Vendedor: <strong className=${isDarkMode ? 'text-white' : 'text-zinc-900'}>${t.finishedVendedor}</strong></p>
+                                                                            </div>
+                                                                        ` : ''}
+                                                                    </div>
+                                                                </div>
+                                                            `;
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    `}
+                                </div>
+                            </div>
+                        `}
+
+                        ${view === 'tasks' && html`
+                            <div className="space-y-6">
+                                <div className=${`border-4 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-colors ${
+                                    isDarkMode ? 'bg-zinc-900 border-white shadow-[5px_5px_0px_0px_rgba(227,6,19,1)]' : 'bg-white border-black shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]'
+                                }`}>
+                                    <div className="flex items-center gap-2">
+                                        <span className="bg-black text-white p-1 px-2 text-[10px] font-bauhaus uppercase flex items-center gap-1"><${Icons.Filter} /> Filtrar</span>
+                                        <h3 className="font-bauhaus text-xs md:text-sm uppercase font-bold">Listado de Tareas</h3>
+                                    </div>
+
+                                    ${hasGlobalViewPrivileges() ? html`
+                                        <select value=${selectedListSection} onChange=${(e) => setSelectedListSection(e.target.value)} className=${`p-2.5 border-2 uppercase text-[10px] font-bold focus:outline-none w-full sm:w-64 ${
+                                            isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'
+                                        }`}>
+                                            <option value="TODAS">🔍 Todas las Secciones</option>
+                                            ${Object.entries(sectionColors).map(([name, style]) => html`<option key=${name} value=${name}>${style.icon} ${name}</option>`)}
+                                        </select>
+                                    ` : html`
+                                        <div className=${`p-2.5 border-2 uppercase text-[10px] font-bold w-full sm:w-64 ${
+                                            isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-neutral-50 border-black text-black'
+                                        }`}>
+                                            📌 ${getSectionStyle(currentUser.section).icon} ${currentUser.section}
+                                        </div>
+                                    `}
+                                </div>
+
+                                ${isMobile ? html`
+                                    <div className="space-y-4">
+                                        ${listFilteredTasks.map(t => {
+                                            const sStyle = getSectionStyle(t.section);
+                                            const pStyle = getPriorityStyle(t.priority);
+                                            return html`
+                                                <div key=${t.id} className=${`border-4 p-4 shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] relative flex flex-col justify-between gap-4 ${
+                                                    isDarkMode ? 'bg-zinc-900 border-white text-white' : 'bg-white border-black text-black'
+                                                }`}>
+                                                    <div>
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <h4 className="font-bauhaus text-sm uppercase break-words leading-tight">${t.title}</h4>
+                                                            <div className="flex items-center gap-2 shrink-0">
+                                                                <span className=${`text-[8px] font-bold px-2 py-0.5 uppercase border ${pStyle.bg} ${pStyle.border}`}>
+                                                                    ${pStyle.icon} ${pStyle.label}
+                                                                </span>
+                                                                <span className=${`text-[8px] font-bauhaus px-2 py-0.5 uppercase ${t.status==='completed'?'bg-emerald-100 text-emerald-600':'bg-amber-100 text-amber-600'}`}>${t.status}</span>
+                                                                ${currentUser.role === 'admin' ? html`
+                                                                    <button onClick=${() => setConfirmDelete(t.id)} className="p-1 border border-black text-zinc-400 hover:text-[#e30613] hover:border-[#e30613] transition-colors"><${Icons.Trash} /></button>
+                                                                ` : ''}
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-2 space-y-1.5 text-[9px] font-bold text-zinc-500">
+                                                            <p className="uppercase"><span className=${`font-bauhaus ${isDarkMode ? 'text-white' : 'text-black'}`}>SECCIÓN:</span> ${t.section}</p>
+                                                            <p className="uppercase"><span className=${`font-bauhaus ${isDarkMode ? 'text-white' : 'text-black'}`}>OPERARIO:</span> ${t.assignedTo}</p>
+                                                            <p className="text-[8px] text-zinc-400 font-medium">${t.createdAt}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className=${`flex gap-2 w-full pt-2 border-t ${isDarkMode ? 'border-zinc-800' : 'border-zinc-100'}`}>
+                                                        <button onClick=${() => setActiveMobileTask(t)} className=${`flex-grow p-2.5 font-bauhaus text-[9px] uppercase border-2 active:bg-zinc-100 ${
+                                                            isDarkMode ? 'bg-zinc-850 border-white text-white' : 'bg-white border-black text-black'
+                                                        }`}>Ver Detalles</button>
+                                                        ${t.status !== 'completed' ? html`
+                                                            <button onClick=${() => setCompletingTask(t)} className="bg-black text-white p-2.5 px-4 font-bauhaus text-[9px] uppercase border-2 border-black active:bg-zinc-800">Finalizar</button>
+                                                        ` : ''}
+                                                    </div>
+                                                </div>
+                                            `;
+                                        })}
+                                    </div>
+                                ` : html`
+                                    <div className=${`border-4 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] ${isDarkMode ? 'bg-zinc-900 border-white shadow-[10px_10px_0px_0px_rgba(227,6,19,1)]' : 'bg-white border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]'}`}>
+                                        <table className="w-full text-left">
+                                            <thead className=${`font-bauhaus text-[10px] uppercase border-b-2 ${isDarkMode ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-black border-black text-white'}`}>
+                                                <tr><th className="p-4">Tarea</th><th className="p-4">Prioridad</th><th className="p-4">Sección</th><th className="p-4">Encargado</th><th className="p-4">Estado</th><th className="p-4 text-right">Acción</th></tr>
+                                            </thead>
+                                            <tbody className=${`divide-y-2 ${isDarkMode ? 'divide-zinc-800 text-zinc-300' : 'divide-zinc-100 text-black'}`}>
+                                                ${listFilteredTasks.map(t => {
+                                                    const sStyle = getSectionStyle(t.section);
+                                                    const pStyle = getPriorityStyle(t.priority);
+                                                    return html`
+                                                        <tr key=${t.id} className="text-[10px] font-bold uppercase hover:bg-neutral-50 transition-colors relative group">
+                                                            <td className="p-4 cursor-pointer relative">
+                                                                <div>
+                                                                    <p className=${`font-bauhaus flex items-center gap-1.5 ${isDarkMode ? 'text-white' : 'text-neutral-900'}`}>
+                                                                        ${t.image ? html`<span className="text-zinc-500" title="Contiene fotografía adjunta"><${Icons.ImageIcon} /></span>` : ''}
+                                                                        ${t.title}
+                                                                    </p>
+                                                                    <p className="text-zinc-400 text-[8px] mt-1">${t.createdAt}</p>
+                                                                </div>
+                                                                <div className=${`absolute left-6 top-12 hidden group-hover:flex flex-col p-5 border-4 shadow-[12px_12px_0px_0px_rgba(227,6,19,1)] z-50 w-80 normal-case font-bold divide-y-2 divide-black pointer-events-none ${
+                                                                    isDarkMode ? 'bg-zinc-950 border-white' : 'bg-white border-black'
+                                                                }`}>
+                                                                    <div className="pb-3 text-left">
+                                                                        <span className="text-[8px] bg-[#e30613] text-white px-2 py-0.5 font-bauhaus uppercase font-bold">FICHA TÉCNICA DE TRABAJO</span>
+                                                                        <h4 className="font-bauhaus text-sm mt-2 text-[#e30613] uppercase break-words">${t.title}</h4>
+                                                                    </div>
+                                                                    
+                                                                    ${t.image ? html`
+                                                                        <div className="py-2 flex justify-center bg-neutral-100 border border-black max-h-48 overflow-hidden">
+                                                                            <img src=${t.image} alt=${t.title} className="max-h-44 object-contain" />
+                                                                        </div>
+                                                                    ` : ''}
+
+                                                                    <div className="py-3 space-y-2 text-[10px] text-zinc-700 font-medium">
+                                                                        <p className=${`font-bold uppercase ${isDarkMode ? 'text-zinc-300' : 'text-black'}`}><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">PRIORIDAD:</span> ${pStyle.icon} ${pStyle.label}</p>
+                                                                        <p className=${`font-bold uppercase ${isDarkMode ? 'text-zinc-300' : 'text-black'}`}><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">SECCIÓN:</span> ${t.section}</p>
+                                                                        <p className=${`font-bold uppercase ${isDarkMode ? 'text-zinc-300' : 'text-black'}`}><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">ASIGNADO A:</span> ${t.assignedTo}</p>
+                                                                        <p className=${`font-bold uppercase flex items-center gap-1 ${isDarkMode ? 'text-zinc-300' : 'text-black'}`}>
+                                                                            <span className="text-[#e30613] font-bauhaus text-[9px] mr-1">ESTADO:</span>
+                                                                            <span className=${`px-2 py-0.5 text-[8px] font-bauhaus ${t.status === 'completed' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>${t.status}</span>
+                                                                        </p>
+                                                                    </div>
+                                                                    ${t.status === 'completed' && t.finishedBy ? html`
+                                                                        <div className=${`py-2 space-y-1 text-left text-[9px] border mt-2 ${isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-neutral-100 border-black'}`}>
+                                                                            <p className=${`font-bold uppercase ${isDarkMode ? 'text-zinc-300' : 'text-black'}`}><span className="text-zinc-500 mr-1">FINALIZADO POR:</span> ${t.finishedBy}</p>
+                                                                            <p className=${`font-bold uppercase ${isDarkMode ? 'text-zinc-300' : 'text-black'}`}><span className="text-zinc-500 mr-1">VENDEDOR:</span> ${t.finishedVendedor}</p>
+                                                                            <p className=${`font-bold uppercase ${isDarkMode ? 'text-zinc-300' : 'text-black'}`}><span className="text-zinc-500 mr-1">DÍA DE FIN:</span> ${t.finishedAt}</p>
+                                                                        </div>
+                                                                    ` : ''}
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-4 font-bauhaus">
+                                                                <span className=${`px-2.5 py-1 border uppercase text-[8px] ${pStyle.bg} ${pStyle.border}`}>
+                                                                    ${pStyle.icon} ${pStyle.label}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-4 font-bauhaus"><span className=${`px-2.5 py-1 text-white border ${sStyle.bg} ${sStyle.border}`}>${t.section}</span></td>
+                                                            <td className="p-4 text-[#e30613]">${t.assignedTo}</td>
+                                                            <td className="p-4"><span className=${`px-2 py-1 font-bold ${t.status==='completed'?'bg-emerald-100 text-emerald-600':'bg-amber-100 text-amber-600'}`}>${t.status}</span></td>
+                                                            <td className="p-4 text-right flex justify-end gap-2">
+                                                                ${t.status !== 'completed' ? html`
+                                                                    <button onClick=${() => setCompletingTask(t)} className="bg-black hover:bg-zinc-800 text-white p-1 border-2 border-black px-3 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-bold uppercase text-[9px]">Finalizar</button>
+                                                                ` : ''}
+                                                                ${currentUser.role === 'admin' ? html`
+                                                                    <button onClick=${() => setConfirmDelete(t.id)} className="p-1 border-2 border-black text-zinc-300 hover:text-[#e30613] hover:border-[#e30613] transition-colors"><${Icons.Trash} /></button>
+                                                                ` : ''}
+                                                            </td>
+                                                        </tr>
+                                                    `;
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                `}
+                            </div>
+                        `}
+
+                        ${view === 'news' && html`
+                            <div className="space-y-6">
+                                <div className=${`border-4 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-colors ${
+                                    isDarkMode ? 'bg-zinc-900 border-white shadow-[5px_5px_0px_0px_rgba(227,6,19,1)]' : 'bg-white border-black shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]'
+                                }`}>
+                                    <div className="flex items-center gap-2">
+                                        <span className="bg-[#e30613] text-white p-1.5 px-3.5 text-[10px] font-bauhaus uppercase flex items-center gap-1"><${Icons.News} /> Novedades</span>
+                                        <h3 className="font-bauhaus text-xs md:text-sm uppercase font-bold">Tablón Informativo</h3>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                                        <select value=${selectedNewsCategory} onChange=${(e) => setSelectedNewsCategory(e.target.value)} className=${`p-2.5 border-2 uppercase text-[10px] font-bold focus:outline-none w-full sm:w-48 ${
+                                            isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'
+                                        }`}>
+                                            <option value="TODAS">🔍 Todas</option>
+                                            <option value="IMPLANTACIÓN">🛠️ Implantación</option>
+                                            <option value="PRODUCTO NUEVO">📦 Producto Nuevo</option>
+                                            <option value="COMUNICADO">📢 Comunicado</option>
+                                        </select>
+                                        
+                                        ${canCreateNews ? html`
+                                            <button 
+                                                onClick=${() => setIsCreatingNews(true)}
+                                                className="bg-black hover:bg-[#e30613] text-white p-2.5 border-2 border-black font-bauhaus text-[10px] uppercase font-bold tracking-tight transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center gap-1"
+                                            >
+                                                <${Icons.Plus} /> Publicar Novedad
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+
+                                ${listFilteredNews.length === 0 ? html`
+                                    <div className=${`border-2 border-dashed p-12 text-center uppercase font-bauhaus text-[10px] ${isDarkMode ? 'bg-zinc-950 border-zinc-800 text-zinc-600' : 'bg-neutral-50 border-zinc-300 text-zinc-400'}`}>
+                                        No se han publicado novedades con este filtro.
+                                    </div>
+                                ` : html`
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        ${listFilteredNews.map(n => {
+                                            const isImplantation = n.category === 'IMPLANTACIÓN';
+                                            const isNewProduct = n.category === 'PRODUCTO NUEVO';
+                                            const catBg = isImplantation ? 'bg-[#e30613]' : isNewProduct ? 'bg-blue-600' : 'bg-yellow-400 text-black';
+                                            return html`
+                                                <div key=${n.id} className=${`border-4 p-5 flex flex-col justify-between transition-colors ${
+                                                    isDarkMode ? 'bg-zinc-900 border-white shadow-[8px_8px_0px_0px_rgba(227,6,19,1)]' : 'bg-white border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'
+                                                }`}>
+                                                    <div>
+                                                        <div className="flex items-start justify-between gap-2 mb-3">
+                                                            <span className=${`text-[8px] font-bold px-2 py-0.5 uppercase ${catBg} text-white border border-black`}>
+                                                                ${n.category || 'Novedad'}
+                                                            </span>
+                                                            <span className="text-[8px] text-neutral-400 font-bold">${n.createdAt}</span>
+                                                        </div>
+                                                        <h4 className=${`font-bauhaus text-sm uppercase mb-2 leading-tight tracking-tight break-words ${isDarkMode ? 'text-white' : 'text-neutral-900'}`}>${n.title}</h4>
+                                                        <p className=${`text-[10px] uppercase font-medium mb-4 whitespace-pre-wrap ${isDarkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>${n.description}</p>
+                                                        
+                                                        ${n.image ? html`
+                                                            <div className="mb-4 border border-black overflow-hidden bg-neutral-100 max-h-56 flex items-center justify-center">
+                                                                <img src=${n.image} alt=${n.title} className="max-h-56 object-contain w-full" />
+                                                            </div>
+                                                        ` : ''}
+                                                    </div>
+                                                    <div className=${`flex justify-between items-center pt-3 border-t text-[9px] font-bold ${isDarkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
+                                                        <span className="text-zinc-500 uppercase"><span className=${`font-bauhaus ${isDarkMode ? 'text-white' : 'text-black'}`}>Por:</span> ${n.author || 'Colaborador'}</span>
+                                                        <div className="flex gap-2">
+                                                            ${isMobile ? html`
+                                                                <button onClick=${() => setActiveMobileNews(n)} className="bg-black hover:bg-zinc-800 text-white text-[8px] font-bauhaus uppercase p-1 px-2.5 border border-black">Detalle</button>
+                                                            ` : ''}
+                                                            ${currentUser.role === 'admin' ? html`
+                                                                <button onClick=${() => setConfirmDeleteNews(n.id)} className="p-1 border border-black text-zinc-300 hover:text-[#e30613] hover:border-[#e30613] transition-colors"><${Icons.Trash} /></button>
+                                                            ` : ''}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        })}
+                                    </div>
+                                `}
+                            </div>
+                        `}
+
+                        ${view === 'create' && html`
+                            <div className=${`border-4 p-4 md:p-8 transition-colors ${
+                                isDarkMode ? 'bg-zinc-900 border-white shadow-[8px_8px_0px_0px_rgba(227,6,19,1)]' : 'bg-white border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'
+                            }`}>
+                                <form className="space-y-4" onSubmit=${e => {
+                                    e.preventDefault(); const fd = new FormData(e.target);
+                                    addTask({ 
+                                        title: fd.get('title'), 
+                                        description: fd.get('description'), 
+                                        createdAt: fd.get('date'), 
+                                        estimatedTime: fd.get('time'), 
+                                        section: fd.get('section'), 
+                                        assignedTo: fd.get('to'),
+                                        priority: fd.get('priority')
+                                    });
+                                    e.target.reset();
+                                }}>
+                                    <div><label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold">Título</label><input name="title" required className=${`w-full p-3 border-2 uppercase text-xs font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`} /></div>
+                                    <div><label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold">Instrucciones</label><textarea name="description" rows="3" className=${`w-full p-3 border-2 text-xs font-bold uppercase focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}></textarea></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold">Fecha Planificación</label><input type="date" name="date" required defaultValue=${todayDateStr} className=${`w-full p-3 border-2 text-xs focus:outline-none font-bold ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`} /></div>
+                                        <div><label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold">Tiempo Estimado</label><input name="time" required className=${`w-full p-3 border-2 text-xs focus:outline-none font-bold uppercase ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`} /></div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold">Sección Afectada</label>
+                                            ${hasGlobalViewPrivileges() ? html`
+                                                <select 
+                                                    name="section" 
+                                                    className=${`w-full p-3 border-2 uppercase text-xs font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}
+                                                    defaultValue=${currentUser.section || "SANITARIOS"}
+                                                >
+                                                    ${Object.keys(sectionColors).map(name => html`<option key=${name} value=${name}>${name}</option>`)}
+                                                </select>
+                                            ` : html`
+                                                <div className="relative">
+                                                    <input 
+                                                        type="hidden" 
+                                                        name="section" 
+                                                        value=${currentUser.section} 
+                                                    />
+                                                    <div className=${`w-full p-3 border-2 uppercase text-xs font-bold cursor-not-allowed ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-neutral-100 border-black'}`}>
+                                                        ${currentUser.section}
+                                                    </div>
+                                                </div>
+                                            `}
+                                        </div>
+                                        <div>
+                                            <label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold">Prioridad de Ejecución</label>
+                                            <select 
+                                                name="priority" 
+                                                className=${`w-full p-3 border-2 uppercase text-xs font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}
+                                                defaultValue="MEDIA"
+                                            >
+                                                <option value="MUY ALTA">🚨 Muy Alta</option>
+                                                <option value="ALTA">⚠️ Alta</option>
+                                                <option value="MEDIA">⚡ Media</option>
+                                                <option value="BAJA">🔹 Baja</option>
+                                                <option value="MUY BAJA">⏳ Muy Baja</option>
+                                            </select>
+                                        </div>
+                                        <div><label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold">Encargado Responsable</label><select name="to" className=${`w-full p-3 border-2 uppercase text-xs font-bold focus:outline-none ${isDarkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-white border-black text-black'}`}><option>RESPONSABLE</option><option>VENDEDOR</option><option>MANTENIMIENTO</option></select></div>
+                                    </div>
+                                    
+                                    <div className=${`border-2 p-4 space-y-3 ${isDarkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-neutral-50 border-black'}`}>
+                                        <span className=${`font-bauhaus text-[9px] uppercase tracking-wider block font-bold border-b pb-1 ${isDarkMode ? 'text-white border-zinc-800' : 'text-black border-black'}`}>FOTOGRAFÍA ADJUNTA</span>
+                                        
+                                        <div className="flex gap-2">
+                                            <button 
+                                                type="button" 
+                                                onClick=${triggerFileSelect}
+                                                className=${`flex-1 border-2 p-2.5 font-bauhaus text-[9px] uppercase flex items-center justify-center gap-1.5 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 ${
+                                                    isDarkMode ? 'bg-zinc-800 border-white text-white shadow-[2px_2px_0px_0px_rgba(227,6,19,1)]' : 'bg-white border-black text-black'
+                                                }`}
+                                            >
+                                                <${Icons.ImageIcon} /> Archivo
+                                            </button>
+                                            
+                                            <button 
+                                                type="button" 
+                                                onClick=${triggerCameraCapture}
+                                                className="flex-1 bg-[#e30613] hover:bg-black text-white border-2 border-black p-2.5 font-bauhaus text-[9px] uppercase flex items-center justify-center gap-1.5 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
+                                            >
+                                                <${Icons.Camera} /> Cámara
+                                            </button>
+                                        </div>
+
+                                        <input 
+                                            type="file" 
+                                            ref=${fileInputRef} 
+                                            accept="image/*" 
+                                            onChange=${handleFileChange} 
+                                            className="hidden" 
+                                        />
+                                        <input 
+                                            type="file" 
+                                            ref=${cameraInputRef} 
+                                            accept="image/*" 
+                                            capture="environment" 
+                                            onChange=${handleCameraCapture} 
+                                            className="hidden" 
+                                        />
+
+                                        ${taskPhoto ? html`
+                                            <div className="relative mt-2 border-2 border-black bg-white p-2">
+                                                <img src=${taskPhoto} alt="Previsualización adjunto" className="max-h-48 mx-auto object-contain border border-neutral-300" />
+                                                <button 
+                                                    type="button" 
+                                                    onClick=${removeAttachedPhoto}
+                                                    className="absolute top-1 right-1 bg-black text-white hover:bg-[#e30613] w-6 h-6 flex items-center justify-center font-bold text-xs border border-white"
+                                                    title="Eliminar foto"
+                                                >
+                                                    ×
+                                                </button>
+                                                <span className="text-[7px] text-zinc-500 uppercase font-bold text-center block mt-1">Imagen lista para sincronizar</span>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+
+                                    <button type="submit" className="w-full bg-[#e30613] text-white p-4 font-bauhaus uppercase text-xs border-2 border-black hover:bg-black transition-colors mt-4 font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">Registrar Trabajo</button>
+                                </form>
+                            </div>
+                        `}
+                    </main>
+
+                    ${isCreatingNews && canCreateNews ? html`
+                        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 animate-fade-in">
+                            <div className="bg-white border-4 border-black p-6 max-w-sm w-full shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] max-h-[90vh] overflow-y-auto">
+                                <h4 className="font-bauhaus text-lg uppercase mb-4 font-bold text-center text-black">Publicar Novedad</h4>
+                                <form className="space-y-4" onSubmit=${e => {
+                                    e.preventDefault();
+                                    const fd = new FormData(e.target);
+                                    addNews({
+                                        title: fd.get('title'),
+                                        description: fd.get('description'),
+                                        category: fd.get('category'),
+                                        createdAt: todayDateStr,
+                                        author: currentUser.name
+                                    });
+                                    e.target.reset();
+                                }}>
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold text-black">Título de la Novedad</label>
+                                        <input name="title" required className="w-full p-3 border-2 border-black uppercase text-xs font-bold focus:outline-none bg-white text-black" placeholder="Ej. Comunicado Importante de Personal" />
+                                    </div>
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold text-black">Categoría de Información</label>
+                                        <select name="category" required className="w-full p-3 border-2 border-black uppercase text-xs font-bold focus:outline-none bg-white text-black">
+                                            <option value="COMUNICADO">Comunicado</option>
+                                            <option value="IMPLANTACIÓN">Implantación</option>
+                                            <option value="PRODUCTO NUEVO">Producto Nuevo</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1 font-bold text-black">Información de Novedad</label>
+                                        <textarea name="description" rows="4" required className="w-full p-3 border-2 border-black text-xs font-bold uppercase focus:outline-none bg-white text-black" placeholder="Detalla la novedad o comunicado general."></textarea>
+                                    </div>
+
+                                    <div className="border-2 border-black p-4 bg-neutral-50 space-y-3">
+                                        <span className="font-bauhaus text-[9px] uppercase tracking-wider block font-bold text-black border-b border-black pb-1">FOTOGRAFÍA ADJUNTA</span>
+                                        
+                                        <div className="flex gap-2">
+                                            <button 
+                                                type="button" 
+                                                onClick=${triggerNewsFileSelect}
+                                                className="flex-1 bg-white hover:bg-neutral-100 text-black border-2 border-black p-2.5 font-bauhaus text-[9px] uppercase flex items-center justify-center gap-1.5 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                            >
+                                                <${Icons.ImageIcon} /> Archivo
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                onClick=${triggerNewsCameraCapture}
+                                                className="flex-1 bg-[#e30613] hover:bg-black text-white border-2 border-black p-2.5 font-bauhaus text-[9px] uppercase flex items-center justify-center gap-1.5 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                            >
+                                                <${Icons.Camera} /> Cámara
+                                            </button>
+                                        </div>
+
+                                        <input 
+                                            type="file" 
+                                            ref=${newsFileInputRef} 
+                                            accept="image/*" 
+                                            onChange=${handleNewsFileChange} 
+                                            className="hidden" 
+                                        />
+                                        <input 
+                                            type="file" 
+                                            ref=${newsCameraInputRef} 
+                                            accept="image/*" 
+                                            capture="environment" 
+                                            onChange=${handleNewsCameraCapture} 
+                                            className="hidden" 
+                                        />
+
+                                        ${newsPhoto ? html`
+                                            <div className="relative mt-2 border-2 border-black bg-white p-2">
+                                                <img src=${newsPhoto} alt="Previsualización novedad" className="max-h-36 mx-auto object-contain border border-neutral-300" />
+                                                <button 
+                                                    type="button" 
+                                                    onClick=${removeNewsAttachedPhoto}
+                                                    className="absolute top-1 right-1 bg-black text-white hover:bg-[#e30613] w-6 h-6 flex items-center justify-center font-bold text-xs border border-white"
+                                                    title="Eliminar foto"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+
+                                    <div className="pt-2">
+                                        <button type="submit" className="w-full bg-black text-white p-4 font-bauhaus uppercase text-xs border-2 border-black hover:bg-zinc-800 transition-colors font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                            Guardar y Publicar
+                                        </button>
+                                        <button type="button" onClick=${() => { setIsCreatingNews(false); removeNewsAttachedPhoto(); }} className="w-full text-zinc-500 font-bauhaus uppercase text-[9px] py-4 hover:text-black text-center block font-bold">
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${completingTask ? html`
+                        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 animate-fade-in">
+                            <div className="bg-white border-4 border-black p-6 max-w-sm w-full shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] text-black">
+                                <h4 className="font-bauhaus text-lg uppercase mb-2 font-bold text-center">Finalizar Tarea</h4>
+                                <p className="text-[10px] text-[#e30613] font-bold uppercase mb-6 text-center line-clamp-2">${completingTask.title}</p>
+                                
+                                <form className="space-y-4" onSubmit=${handleCompleteSubmit}>
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Persona que realiza la tarea</label>
+                                        <input name="finisher" required className="w-full p-3 border-2 border-black text-xs font-bold uppercase focus:outline-none bg-white" placeholder="Nombre de quien finaliza" />
+                                    </div>
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Nombre específico del vendedor</label>
+                                        <input name="vendedor" required className="w-full p-3 border-2 border-black text-xs font-bold uppercase focus:outline-none bg-white" placeholder="Nombre del vendedor" />
+                                    </div>
+                                    <div>
+                                        <label className="font-bauhaus text-[9px] uppercase block mb-1">Día de finalización</label>
+                                        <input type="date" name="finishDate" required defaultValue=${todayDateStr} className="w-full p-3 border-2 border-black text-xs font-bold uppercase focus:outline-none bg-white" />
+                                    </div>
+                                    <div className="pt-4">
+                                        <button type="submit" className="w-full bg-black text-white p-4 font-bauhaus uppercase text-xs border-2 border-black hover:bg-zinc-800 transition-colors font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                            Guardar y Finalizar
+                                        </button>
+                                        <button type="button" onClick=${() => setCompletingTask(null)} className="w-full text-zinc-500 font-bauhaus uppercase text-[9px] py-4 hover:text-black font-bold text-center block">
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${activeMobileTask ? html`
+                        <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50 animate-fade-in">
+                            <div className="bg-white text-black border-4 border-black p-6 w-full max-w-sm flex flex-col divide-y-2 divide-black max-h-[90vh] overflow-y-auto shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="pb-3 text-left">
+                                    <span className="text-[8px] bg-[#e30613] text-white px-2 py-0.5 font-bauhaus uppercase font-bold">Ficha Técnica</span>
+                                    <h4 className="font-bauhaus text-base mt-2 text-[#e30613] uppercase break-words">${activeMobileTask.title}</h4>
+                                </div>
+
+                                ${activeMobileTask.image ? html`
+                                    <div className="py-3 flex justify-center bg-neutral-100 border-b-2 border-black">
+                                        <img src=${activeMobileTask.image} alt=${activeMobileTask.title} className="max-h-48 object-contain" />
+                                    </div>
+                                ` : ''}
+
+                                <div className="py-3 space-y-2.5 text-[10px] text-zinc-700 font-bold">
+                                    <p className="uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">PRIORIDAD:</span> ${getPriorityStyle(activeMobileTask.priority).icon} ${getPriorityStyle(activeMobileTask.priority).label}</p>
+                                    <p className="uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">SECCIÓN:</span> ${activeMobileTask.section}</p>
+                                    <p className="uppercase"><span className="text-[#e30613] font-bauhaus text-[9px] mr-1">ESTADO:</span> ${activeMobileTask.status}</p>
+                                </div>
+                                ${activeMobileTask.status === 'completed' && activeMobileTask.finishedBy ? html`
+                                    <div className="py-3 text-left space-y-2 border-t-2 border-black">
+                                        <span className="text-[#e30613] font-bauhaus text-[9px] uppercase block mb-1">Datos de Finalización:</span>
+                                        <p className="uppercase text-[9px] font-bold"><span className="text-zinc-500 mr-1">REALIZADA POR:</span> ${activeMobileTask.finishedBy}</p>
+                                        <p className="uppercase text-[9px] font-bold"><span className="text-zinc-500 mr-1">VENDEDOR:</span> ${activeMobileTask.finishedVendedor}</p>
+                                        <p className="uppercase text-[9px] font-bold"><span className="text-zinc-500 mr-1">FECHA FINALIZACIÓN:</span> ${activeMobileTask.finishedAt}</p>
+                                    </div>
+                                ` : ''}
+                                <div className="pt-3">
+                                    <button onClick=${() => setActiveMobileTask(null)} className="w-full bg-black text-white p-3 font-bauhaus text-[9px] uppercase border-2 border-black hover:bg-[#e30613] transition-colors font-bold">
+                                        Volver
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${activeMobileNews ? html`
+                        <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50 animate-fade-in">
+                            <div className="bg-white text-black border-4 border-black p-6 w-full max-w-sm flex flex-col divide-y-2 divide-black max-h-[90vh] overflow-y-auto shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="pb-3 text-left">
+                                    <span className="text-[8px] bg-[#e30613] text-white px-2 py-0.5 font-bauhaus uppercase font-bold">${activeMobileNews.category}</span>
+                                    <h4 className="font-bauhaus text-base mt-2 text-[#e30613] uppercase break-words">${activeMobileNews.title}</h4>
+                                </div>
+
+                                ${activeMobileNews.image ? html`
+                                    <div className="py-3 flex justify-center bg-neutral-100 border-b-2 border-black">
+                                        <img src=${activeMobileNews.image} alt=${activeMobileNews.title} className="max-h-48 object-contain" />
+                                    </div>
+                                ` : ''}
+
+                                <div className="py-3 space-y-2 text-[10px] text-zinc-700 font-bold">
+                                    <p className="uppercase whitespace-pre-wrap font-medium text-black">${activeMobileNews.description}</p>
+                                    <p className="uppercase text-[8px] text-zinc-400 mt-2">Publicado: ${activeMobileNews.createdAt}</p>
+                                    <p className="uppercase text-[8px] text-zinc-500">Autor: ${activeMobileNews.author}</p>
+                                </div>
+                                <div className="pt-3">
+                                    <button onClick=${() => setActiveMobileNews(null)} className="w-full bg-black text-white p-3 font-bauhaus text-[9px] uppercase border-2 border-black hover:bg-[#e30613] transition-colors font-bold">
+                                        Volver
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${confirmDelete && currentUser.role === 'admin' ? html`
+                        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 animate-fade-in">
+                            <div className="bg-white border-8 border-[#e30613] p-8 max-w-xs w-full text-center shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] text-black">
+                                <h4 className="font-bauhaus text-lg uppercase mb-6 font-bold">¿Deseas eliminar esta tarea?</h4>
+                                <button onClick=${() => deleteTask(confirmDelete)} className="w-full bg-[#e30613] text-white p-4 font-bauhaus uppercase text-xs mb-2 font-bold shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">Eliminar Permanentemente</button>
+                                <button onClick=${() => setConfirmDelete(null)} className="w-full text-zinc-400 font-bauhaus uppercase text-[9px] py-2 hover:text-black">Cancelar</button>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${confirmDeleteNews && currentUser.role === 'admin' ? html`
+                        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 animate-fade-in">
+                            <div className="bg-white border-8 border-[#e30613] p-8 max-w-xs w-full text-center shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] text-black">
+                                <h4 className="font-bauhaus text-lg uppercase mb-6 font-bold">¿Deseas eliminar esta novedad?</h4>
+                                <button onClick=${() => deleteNews(confirmDeleteNews)} className="w-full bg-[#e30613] text-white p-4 font-bauhaus uppercase text-xs mb-2 font-bold shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">Eliminar Permanentemente</button>
+                                <button onClick=${() => setConfirmDeleteNews(null)} className="w-full text-zinc-400 font-bauhaus uppercase text-[9px] py-2 hover:text-black">Cancelar</button>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        };
+
+        const startApp = () => {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(html`<${App} />`);
+        };
+
+        if (window.F_SDK) {
+            startApp();
+        } else {
+            window.mountReactApp = startApp;
+        }
+    </script>
+</body>
+</html>
